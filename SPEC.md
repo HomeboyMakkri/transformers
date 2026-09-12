@@ -8,10 +8,17 @@ Build a seven-day sentiment-analysis project while understanding tokenization, h
 
 Days 1 and 2 are specified below. Days 3–7 remain high-level until their requirements are discussed; later-day code is out of scope for now.
 
+## Accepted decisions
+
+- Language: English.
+- Shared tokenizer/model checkpoint: `distilbert-base-uncased`.
+- Working format: a small hybrid. Reusable project logic lives in
+  `src/transformers_learning/`; notebooks in `notebooks/` contain only
+  explanations, small examples, and calls to that reusable logic.
+- Day 1 walkthrough notebook: `notebooks/day1_tokenization.ipynb`.
+
 ## Open decisions
 
-- Language and model: English with `distilbert-base-uncased`, or multilingual/Russian with `distilbert-base-multilingual-cased`.
-- Working format: Python modules, notebooks, or a small hybrid.
 - Sentiment dataset and label mapping; the eventual tabular contract is `text,label`.
 
 ## Day 1 contract: tokenization

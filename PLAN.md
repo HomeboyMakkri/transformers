@@ -6,19 +6,19 @@ Work on one item per request. For each item, read its matching `tasks/dayN.md` s
 
 ### D1-01 — Decisions and scaffold
 
-- [ ] Choose the language/model and notebook/module format; record both in `SPEC.md`.
+- [x] Choose the language/model and notebook/module format; record both in `SPEC.md`.
 - **Done when:** the implementation location and one `model_name` are unambiguous.
 - **Verify:** imports work in `.venv`; do not load `AutoModel` yet.
 
 ### D1-02 — Tokenizer inspection
 
-- [ ] Load `AutoTokenizer`; inspect vocabulary size, maximum length, and special tokens.
+- [x] Load `AutoTokenizer`; inspect vocabulary size, maximum length, and special tokens.
 - **Done when:** the observed values and meanings are explained with one example.
 - **Verify:** run a focused tokenizer smoke check; no model inference.
 
 ### D1-03 — Single-text walkthrough
 
-- [ ] Tokenize one text; inspect tokens and IDs; decode it back.
+- [x] Tokenize one text; inspect tokens and IDs; decode it back.
 - **Done when:** the role of special tokens and non-perfect decoding is understood.
 - **Verify:** demonstrate the encode/decode path without asserting exact library internals.
 

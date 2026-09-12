@@ -18,10 +18,20 @@
 
 - Prefer simple, typed, reusable functions; avoid abstractions that hide the concept being learned.
 - Use the project environment: `.venv/bin/python`.
+- Treat static type errors in project code and tests as blocking defects, even
+  when runtime tests pass. After changing Python code, run `.venv/bin/pyright`
+  and resolve every error before reporting completion.
+- Fix the underlying type contract instead of adding broad suppressions.
+  Use `cast`, `# type: ignore`, or relaxed Pyright rules only for a documented
+  third-party typing boundary that cannot be expressed or narrowed safely.
+- Keep the editor on the project `.venv` interpreter so Pylance and the Pyright
+  CLI analyze the same dependencies. If editor diagnostics disagree with the
+  CLI, investigate the interpreter/configuration mismatch and report it.
 - Add focused pytest coverage for reusable project logic and meaningful edge cases.
 - Test project behavior, not Hugging Face or PyTorch internals. Prefer shapes, invariants, ordering, and numeric tolerances over exact tokens or floating-point embeddings.
 - Keep default tests fast and offline. Mark checks that load real pretrained models as integration tests and do not make them depend on a fresh network download.
-- Run focused tests first. Available general checks are `.venv/bin/ruff check .` and `.venv/bin/python -m pytest`.
+- Run focused tests first. Available general checks are `.venv/bin/ruff check .`,
+  `.venv/bin/pyright`, and `.venv/bin/python -m pytest`.
 - Report exactly what was verified and what remains unverified. Warn before long training runs or large downloads.
 - Keep datasets, caches, generated plots, serialized models, and experiment results out of Git unless explicitly requested.
 - Do not commit, push, or rewrite user changes unless explicitly requested.
