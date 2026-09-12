@@ -1,18 +1,20 @@
-[9/12/2026 8:21 AM] HwBot | ItGrind: 🔄 🔄 Трансформеры
+# День 5 — Fine-tuning модели
 
-📝 День 5: transformers_day05
+> Идентификатор: `transformers_day05`
 
-День 5 — Fine-tuning модели
+## Цель дня
 
-ЦЕЛЬ ДНЯ:
-Дообучить трансформерную модель на вашем датасете (fine-tuning).
+Дообучить трансформерную модель на выбранном датасете.
 
-Используйте код из Дня 1 (токенизатор) и ваш датасет.
+Используйте токенизатор из Дня 1 и ваш датасет.
 
-ЗАДАЧА 1: Подготовка Dataset класса
+## Задача 1 — Подготовка класса Dataset
 
-1. Создайте класс для датасета:
+Создайте класс для датасета:
+
+```python
 from torch.utils.data import Dataset
+
 
 class SentimentDataset(Dataset):
     def __init__(self, texts, labels, tokenizer, max_length=128):
@@ -30,72 +32,102 @@ class SentimentDataset(Dataset):
 
         encoding = self.tokenizer(
             text,
-            padding=&apos;max_length&apos;,
+            padding="max_length",
             truncation=True,
             max_length=self.max_length,
-            return_tensors="pt"
+            return_tensors="pt",
         )
 
         return {
-            &apos;input_ids&apos;: encoding[&apos;input_ids&apos;].flatten(),
-            &apos;attention_mask&apos;: encoding[&apos;attention_mask&apos;].flatten(),
-            &apos;labels&apos;: torch.tensor(label, dtype=torch.long)
+            "input_ids": encoding["input_ids"].flatten(),
+            "attention_mask": encoding["attention_mask"].flatten(),
+            "labels": torch.tensor(label, dtype=torch.long),
         }
+```
 
-ЗАДАЧА 2: Загрузка и подготовка данных
+## Задача 2 — Загрузка и подготовка данных
 
-1. Загрузите ваш датасет:
-import pandas as pd
+1. Загрузите датасет:
 
-df = pd.read_csv(&apos;your_dataset.csv&apos;)
-texts = df[&apos;text&apos;].tolist()
-labels = df[&apos;label&apos;].tolist()
+   ```python
+   import pandas as pd
 
-2. Разделите на train/validation:
-from sklearn.model_selection import train_test_split
+   df = pd.read_csv("your_dataset.csv")
+   texts = df["text"].tolist()
+   labels = df["label"].tolist()
+   ```
 
-train_texts, val_texts, train_labels, val_labels = train_test_split(
-    texts, labels, test_size=0.2, random_state=42, stratify=labels
-)
+2. Разделите данные на train/validation:
 
-3. Создайте Dataset объекты:
-train_dataset = SentimentDataset(train_texts, train_labels, tokenizer)
-val_dataset = SentimentDataset(val_texts, val_labels, tokenizer)
+   ```python
+   from sklearn.model_selection import train_test_split
 
-ЗАДАЧА 3: Загрузка модели для классификации
+   train_texts, val_texts, train_labels, val_labels = train_test_split(
+       texts,
+       labels,
+       test_size=0.2,
+       random_state=42,
+       stratify=labels,
+   )
+   ```
 
-1. Импортируйте AutoModelForSequenceClassification:
-from transformers import AutoModelForSequenceClassification
+3. Создайте объекты Dataset:
 
-# Определите количество классов
-num_labels = len(set(labels))  # 2 для бинарной, 3 для positive/negative/neutral
+   ```python
+   train_dataset = SentimentDataset(train_texts, train_labels, tokenizer)
+   val_dataset = SentimentDataset(val_texts, val_labels, tokenizer)
+   ```
 
-model = AutoModelForSequenceClassification.from_pretrained(
-    model_name,
-    num_labels=num_labels
-)
+## Задача 3 — Загрузка модели для классификации
 
-2. Создайте DataLoaders:
-from torch.utils.data import DataLoader
+1. Импортируйте `AutoModelForSequenceClassification` и создайте модель:
 
-train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True)
-val_loader = DataLoader(val_dataset, batch_size=16)
+   ```python
+   from transformers import AutoModelForSequenceClassification
 
-ЗАДАЧА 4: Настройка обучения
+   # 2 для бинарной классификации, 3 для positive/negative/neutral.
+   num_labels = len(set(labels))
+
+   model = AutoModelForSequenceClassification.from_pretrained(
+       model_name,
+       num_labels=num_labels,
+   )
+   ```
+
+2. Создайте DataLoader для обучающей и валидационной выборок:
+
+   ```python
+   from torch.utils.data import DataLoader
+
+   train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True)
+   val_loader = DataLoader(val_dataset, batch_size=16)
+   ```
+
+## Задача 4 — Настройка обучения
 
 1. Импортируйте оптимизатор и метрики:
-from transformers import AdamW
-from sklearn.metrics import accuracy_score, f1_score
+
+   ```python
+   from transformers import AdamW
+   from sklearn.metrics import accuracy_score, f1_score
+   ```
 
 2. Создайте оптимизатор:
-optimizer = AdamW(model.parameters(), lr=2e-5)
 
-3. Переместите модель на GPU если доступно:
-device = torch.device(&apos;cuda&apos; if torch.cuda.is_available() else &apos;cpu&apos;)
-model.to(device)
+   ```python
+   optimizer = AdamW(model.parameters(), lr=2e-5)
+   ```
 
-ЗАДАЧА 5: Функция для обучения одной эпохи
+3. Переместите модель на GPU, если он доступен:
 
+   ```python
+   device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+   model.to(device)
+   ```
+
+## Задача 5 — Функция обучения одной эпохи
+
+```python
 def train_epoch(model, dataloader, optimizer, device):
     model.train()
     total_loss = 0
@@ -103,14 +135,14 @@ def train_epoch(model, dataloader, optimizer, device):
     for batch in dataloader:
         optimizer.zero_grad()
 
-        input_ids = batch[&apos;input_ids&apos;].to(device)
-        attention_mask = batch[&apos;attention_mask&apos;].to(device)
-        labels = batch[&apos;labels&apos;].to(device)
+        input_ids = batch["input_ids"].to(device)
+        attention_mask = batch["attention_mask"].to(device)
+        labels = batch["labels"].to(device)
 
         outputs = model(
             input_ids=input_ids,
             attention_mask=attention_mask,
-            labels=labels
+            labels=labels,
         )
 
         loss = outputs.loss
@@ -120,9 +152,11 @@ def train_epoch(model, dataloader, optimizer, device):
         total_loss += loss.item()
 
     return total_loss / len(dataloader)
+```
 
-ЗАДАЧА 6: Функция для оценки
+## Задача 6 — Функция оценки
 
+```python
 def evaluate(model, dataloader, device):
     model.eval()
     predictions = []
@@ -130,12 +164,13 @@ def evaluate(model, dataloader, device):
 
     with torch.no_grad():
         for batch in dataloader:
-            input_ids = batch[&apos;input_ids&apos;].to(device)
-            attention_mask = batch[&apos;attention_mask&apos;].to(device)
-            labels = batch[&apos;labels&apos;].to(device)
+            input_ids = batch["input_ids"].to(device)
+            attention_mask = batch["attention_mask"].to(device)
+            labels = batch["labels"].to(device)
+
             outputs = model(
                 input_ids=input_ids,
-                attention_mask=attention_mask
+                attention_mask=attention_mask,
             )
 
             preds = torch.argmax(outputs.logits, dim=1)
@@ -144,41 +179,53 @@ def evaluate(model, dataloader, device):
             true_labels.extend(labels.cpu().numpy())
 
     accuracy = accuracy_score(true_labels, predictions)
-    f1 = f1_score(true_labels, predictions, average=&apos;macro&apos;)
+    f1 = f1_score(true_labels, predictions, average="macro")
 
     return accuracy, f1
+```
 
-ЗАДАЧА 7: Обучение модели
+## Задача 7 — Обучение модели
 
-1. Обучите модель на 3-5 эпох:
+Обучите модель в течение трёх-пяти эпох:
+
+```python
 num_epochs = 3
 
 for epoch in range(num_epochs):
     train_loss = train_epoch(model, train_loader, optimizer, device)
     val_acc, val_f1 = evaluate(model, val_loader, device)
 
-    print(f&apos;Epoch {epoch+1}/{num_epochs}&apos;)
-    print(f&apos;Train Loss: {train_loss:.4f}&apos;)
-    print(f&apos;Val Accuracy: {val_acc:.4f}&apos;)
-    print(f&apos;Val F1: {val_f1:.4f}&apos;)
-    print(&apos;-&apos; * 50)
+    print(f"Epoch {epoch + 1}/{num_epochs}")
+    print(f"Train Loss: {train_loss:.4f}")
+    print(f"Val Accuracy: {val_acc:.4f}")
+    print(f"Val F1: {val_f1:.4f}")
+    print("-" * 50)
+```
 
-ЗАДАЧА 8: Сохранение модели
+## Задача 8 — Сохранение модели
 
-1. Сохраните модель:
-model.save_pretrained(&apos;./fine_tuned_model&apos;)
-tokenizer.save_pretrained(&apos;./fine_tuned_model&apos;)
+1. Сохраните модель и токенизатор:
+
+   ```python
+   model.save_pretrained("./fine_tuned_model")
+   tokenizer.save_pretrained("./fine_tuned_model")
+   ```
 
 2. Сохраните метрики:
-with open(&apos;fine_tuned_results.txt&apos;, &apos;w&apos;) as f:
-    f.write(f&apos;Final Validation F1: {val_f1:.4f}\n&apos;)
-    f.write(f&apos;Final Validation Accuracy: {val_acc:.4f}\n&apos;)
 
-ЧЕКПОИНТ:
-К концу дня вы должны иметь:
-• Обученную fine-tuned модель
-• Функции для обучения и оценки
-• Сохранённую модель в папке fine_tuned_model
-• Зафиксированные метрики качества
+   ```python
+   with open("fine_tuned_results.txt", "w") as f:
+       f.write(f"Final Validation F1: {val_f1:.4f}\n")
+       f.write(f"Final Validation Accuracy: {val_acc:.4f}\n")
+   ```
 
-В День 6 вы сравните fine-tuned модель с baseline из Дня 4.
+## Чекпоинт
+
+К концу дня у вас должны быть:
+
+- [ ] обученная fine-tuned модель;
+- [ ] функции для обучения и оценки;
+- [ ] модель, сохранённая в папке `fine_tuned_model`;
+- [ ] зафиксированные метрики качества.
+
+> В День 6 вы сравните fine-tuned модель с baseline из Дня 4.

@@ -1,131 +1,167 @@
-📝 День 3: transformers_day03
+# День 3 — Attention-матрицы и визуализация
 
-День 3 — Attention-матрицы и визуализация
+> Идентификатор: `transformers_day03`
 
-ЦЕЛЬ ДНЯ:
-Понять как работает механизм внимания в трансформерах и научиться его визуализировать.
+## Цель дня
 
-Используйте код из Дня 1 и День 2.
+Понять, как работает механизм внимания в трансформерах, и научиться его визуализировать.
 
-ЗАДАЧА 1: Загрузка модели с attention
+Используйте код из Дней 1 и 2.
 
-1. Для получения attention нужно использовать специальный вывод:
-from transformers import AutoModel
+## Задача 1 — Загрузка модели с attention
 
-model = AutoModel.from_pretrained(
-    model_name,
-    output_attentions=True  # важно!
-)
-model.eval()
+1. Загрузите модель с выводом attention:
+
+   ```python
+   from transformers import AutoModel
+
+   model = AutoModel.from_pretrained(
+       model_name,
+       output_attentions=True,  # важно
+   )
+   model.eval()
+   ```
 
 2. Токенизируйте текст:
-text = "The amazing movie won many awards"
-tokens = tokenizer(text, return_tensors="pt")
 
-ЗАДАЧА 2: Получение attention весов
+   ```python
+   text = "The amazing movie won many awards"
+   tokens = tokenizer(text, return_tensors="pt")
+   ```
 
-1. Прогоните через модель:
-with torch.no_grad():
-    outputs = model(**tokens)
+## Задача 2 — Получение весов attention
+
+1. Пропустите данные через модель:
+
+   ```python
+   with torch.no_grad():
+       outputs = model(**tokens)
+   ```
 
 2. Изучите attention:
-print(type(outputs.attentions))
-print(f&apos;Количество слоёв: {len(outputs.attentions)}&apos;)
-print(f&apos;Форма attention для слоя 0: {outputs.attentions[0].shape}&apos;)
 
-Форма: [batch_size, num_heads, seq_len, seq_len]
+   ```python
+   print(type(outputs.attentions))
+   print(f"Количество слоёв: {len(outputs.attentions)}")
+   print(f"Форма attention для слоя 0: {outputs.attentions[0].shape}")
+   ```
+
+   Ожидаемая форма: `[batch_size, num_heads, seq_len, seq_len]`.
 
 3. Извлеките attention из первого слоя:
-attention = outputs.attentions[0]  # первый слой
-print(f&apos;Attention shape: {attention.shape}&apos;)
 
-# Для первого батча, первой головы
-attn_single = attention[0, 0]  # [seq_len, seq_len]
-print(f&apos;Single head shape: {attn_single.shape}&apos;)
+   ```python
+   attention = outputs.attentions[0]  # первый слой
+   print(f"Attention shape: {attention.shape}")
 
-ЗАДАЧА 3: Визуализация attention
+   # Первый элемент батча, первая голова.
+   attn_single = attention[0, 0]  # [seq_len, seq_len]
+   print(f"Single head shape: {attn_single.shape}")
+   ```
 
-1. Установите matplotlib и seaborn:
-pip install matplotlib seaborn
+## Задача 3 — Визуализация attention
 
-2. Напишите функцию для визуализации:
-import matplotlib.pyplot as plt
-import seaborn as sns
-import numpy as np
+1. Установите `matplotlib` и `seaborn`:
 
-def visualize_attention(tokens, attention, layer=0, head=0):
-    """
-    tokens: токенизированный текст
-    attention: attention weights от модели
-    layer: номер слоя для визуализации
-    head: номер головы для визуализации
-    """
-    # Получаем attention матрицу
-    attn = attention[layer][0, head]  # [seq_len, seq_len]
+   ```bash
+   pip install matplotlib seaborn
+   ```
 
-    # Получаем токены для подписей
-    token_list = tokenizer.convert_ids_to_tokens(tokens[&apos;input_ids&apos;][0])
+2. Напишите функцию визуализации:
 
-    # Рисуем heatmap
-    plt.figure(figsize=(10, 8))
-    sns.heatmap(
-        attn.cpu().numpy(),
-        xticklabels=token_list,
-        yticklabels=token_list,
-        cmap=&apos;viridis&apos;,
-        cbar=True
-    )
-    plt.title(f&apos;Attention - Layer {layer}, Head {head}&apos;)
-    plt.xlabel(&apos;Keys&apos;)
-    plt.ylabel(&apos;Queries&apos;)
-    plt.tight_layout()
-    plt.savefig(f&apos;attention_layer{layer}_head{head}.png&apos;)
-    plt.show()
+   ```python
+   import matplotlib.pyplot as plt
+   import numpy as np
+   import seaborn as sns
 
-# Используйте:
-visualize_attention(tokens, outputs.attentions, layer=0, head=0)
 
-ЗАДАЧА 4: Анализ attention для разных слоёв
+   def visualize_attention(tokens, attention, layer=0, head=0):
+       """
+       tokens: токенизированный текст
+       attention: attention weights модели
+       layer: номер слоя для визуализации
+       head: номер головы для визуализации
+       """
+       # Получаем attention-матрицу [seq_len, seq_len].
+       attn = attention[layer][0, head]
+
+       # Получаем токены для подписей.
+       token_list = tokenizer.convert_ids_to_tokens(tokens["input_ids"][0])
+
+       # Рисуем heatmap.
+       plt.figure(figsize=(10, 8))
+       sns.heatmap(
+           attn.cpu().numpy(),
+           xticklabels=token_list,
+           yticklabels=token_list,
+           cmap="viridis",
+           cbar=True,
+       )
+       plt.title(f"Attention - Layer {layer}, Head {head}")
+       plt.xlabel("Keys")
+       plt.ylabel("Queries")
+       plt.tight_layout()
+       plt.savefig(f"attention_layer{layer}_head{head}.png")
+       plt.show()
+   ```
+
+3. Используйте функцию:
+
+   ```python
+   visualize_attention(tokens, outputs.attentions, layer=0, head=0)
+   ```
+
+## Задача 4 — Анализ attention на разных слоях
 
 1. Визуализируйте attention из разных слоёв:
-# Первый слой
-visualize_attention(tokens, outputs.attentions, layer=0, head=0)
 
-# Средний слой
-visualize_attention(tokens, outputs.attentions, layer=3, head=0)
+   ```python
+   # Первый слой.
+   visualize_attention(tokens, outputs.attentions, layer=0, head=0)
 
-# Последний слой
-visualize_attention(tokens, outputs.attentions, layer=5, head=0)
+   # Средний слой.
+   visualize_attention(tokens, outputs.attentions, layer=3, head=0)
 
-2. Сравните — на последних слоях внимание обычно более сфокусировано
+   # Последний слой.
+   visualize_attention(tokens, outputs.attentions, layer=5, head=0)
+   ```
 
-ЗАДАЧА 5: Attention для разных голов
+2. Сравните результаты: на последних слоях внимание обычно более сфокусировано.
+
+## Задача 5 — Attention для разных голов
 
 1. Визуализируйте разные головы одного слоя:
-for head in range(8):  # DistilBERT имеет 8 голов
-    visualize_attention(tokens, outputs.attentions, layer=0, head=head)
 
-2. Проанализируйте — разные головы фокусируются на разных связях
+   ```python
+   for head in range(8):  # DistilBERT имеет 8 голов
+       visualize_attention(tokens, outputs.attentions, layer=0, head=head)
+   ```
 
-ЗАДАЧА 6: Анализ внимания к ключевым словам
+2. Проанализируйте результаты: разные головы фокусируются на разных связях.
 
-1. Возьмите текст с явно выраженным sentimental словом:
-text = "This movie was absolutely terrible and I hated it"
-tokens = tokenizer(text, return_tensors="pt")
+## Задача 6 — Анализ внимания к ключевым словам
 
-with torch.no_grad():
-    outputs = model(**tokens)
+1. Возьмите текст с явно выраженным эмоционально окрашенным словом:
 
-# Визуализируйте
-visualize_attention(tokens, outputs.attentions, layer=5, head=0)
+   ```python
+   text = "This movie was absolutely terrible and I hated it"
+   tokens = tokenizer(text, return_tensors="pt")
 
-2. Посмотрите — на какое слово фокусируется внимание при обработке "terrible"
+   with torch.no_grad():
+       outputs = model(**tokens)
 
-ЧЕКПОИНТ:
-К концу дня вы должны иметь:
-• Понимание что такое attention weights
-• Функцию visualize_attention для визуализации
-• Несколько графиков attention из разных слоёв/голов
-• Понимание как внимание меняется по слоям
+   visualize_attention(tokens, outputs.attentions, layer=5, head=0)
+   ```
 
-В День 4 вы будете использовать эмбеддинги для классификации.
+2. Посмотрите, на какое слово фокусируется внимание при обработке слова `terrible`.
+
+## Чекпоинт
+
+К концу дня у вас должны быть:
+
+- [ ] понимание attention weights;
+- [ ] функция `visualize_attention`;
+- [ ] несколько графиков attention из разных слоёв и голов;
+- [ ] понимание того, как внимание меняется по слоям.
+
+> В День 4 вы будете использовать эмбеддинги для классификации.

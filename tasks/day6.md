@@ -1,32 +1,41 @@
-📝 День 6: transformers_day06
+# День 6 — Инференс и сравнение моделей
 
-День 6 — Инференс и сравнение моделей
+> Идентификатор: `transformers_day06`
 
-ЦЕЛЬ ДНЯ:
-Сравнить baseline модель (День 4) и fine-tuned модель (День 5).
+## Цель дня
 
-Используйте код и модели из предыдущих дней.
+Сравнить baseline-модель из Дня 4 и fine-tuned модель из Дня 5.
 
-ЗАДАЧА 1: Загрузка моделей
+Используйте код и модели предыдущих дней.
+
+## Задача 1 — Загрузка моделей
 
 1. Загрузите fine-tuned модель:
-from transformers import AutoModelForSequenceClassification, AutoTokenizer
-import torch
 
-model_ft = AutoModelForSequenceClassification.from_pretrained(&apos;./fine_tuned_model&apos;)
-tokenizer = AutoTokenizer.from_pretrained(&apos;./fine_tuned_model&apos;)
-model_ft.eval()
+   ```python
+   import torch
+   from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-2. Загрузите baseline модель (из Дня 4):
-import joblib
+   model_ft = AutoModelForSequenceClassification.from_pretrained("./fine_tuned_model")
+   tokenizer = AutoTokenizer.from_pretrained("./fine_tuned_model")
+   model_ft.eval()
+   ```
 
-# Если вы сохранили baseline модель
-baseline_model = joblib.load(&apos;baseline_model.pkl&apos;)
-baseline_vectorizer = joblib.load(&apos;vectorizer.pkl&apos;)
+2. Загрузите baseline-модель из Дня 4:
 
-ЗАДАЧА 2: Функция предсказания для fine-tuned
+   ```python
+   import joblib
+
+   # Если вы сохранили baseline-модель.
+   baseline_model = joblib.load("baseline_model.pkl")
+   baseline_vectorizer = joblib.load("vectorizer.pkl")
+   ```
+
+## Задача 2 — Предсказание fine-tuned модели
 
 Напишите функцию для предсказания:
+
+```python
 def predict_fine_tuned(texts, model, tokenizer):
     if isinstance(texts, str):
         texts = [texts]
@@ -34,7 +43,12 @@ def predict_fine_tuned(texts, model, tokenizer):
     predictions = []
 
     for text in texts:
-        inputs = tokenizer(text, return_tensors="pt", truncation=True, max_length=128)
+        inputs = tokenizer(
+            text,
+            return_tensors="pt",
+            truncation=True,
+            max_length=128,
+        )
 
         with torch.no_grad():
             outputs = model(**inputs)
@@ -42,16 +56,20 @@ def predict_fine_tuned(texts, model, tokenizer):
         probs = torch.nn.functional.softmax(outputs.logits, dim=1)
         pred = torch.argmax(probs, dim=1).item()
 
-        predictions.append({
-            &apos;text&apos;: text,
-            &apos;prediction&apos;: pred,
-            &apos;probabilities&apos;: probs[0].cpu().numpy()
-        })
+        predictions.append(
+            {
+                "text": text,
+                "prediction": pred,
+                "probabilities": probs[0].cpu().numpy(),
+            }
+        )
 
     return predictions
+```
 
-ЗАДАЧА 3: Функция предсказания для baseline
+## Задача 3 — Предсказание baseline-модели
 
+```python
 def predict_baseline(texts, model, vectorizer, clean_func=None):
     if isinstance(texts, str):
         texts = [texts]
@@ -61,119 +79,169 @@ def predict_baseline(texts, model, vectorizer, clean_func=None):
 
     X = vectorizer.transform(texts)
     predictions = model.predict(X)
-    probs = model.predict_proba(X) if hasattr(model, &apos;predict_proba&apos;) else None
+    probs = model.predict_proba(X) if hasattr(model, "predict_proba") else None
 
     results = []
     for i, text in enumerate(texts):
-        results.append({
-            &apos;text&apos;: text,
-            &apos;prediction&apos;: int(predictions[i]),
-            &apos;probabilities&apos;: probs[i] if probs is not None else None
-        })
+        results.append(
+            {
+                "text": text,
+                "prediction": int(predictions[i]),
+                "probabilities": probs[i] if probs is not None else None,
+            }
+        )
 
     return results
+```
 
-ЗАДАЧА 4: Сравнение на примерах
+## Задача 4 — Сравнение на примерах
 
 1. Создайте тестовые примеры:
-test_texts = [
-    "This movie was absolutely fantastic!",
-    "Terrible, waste of my time.",
-    "It was okay, nothing special.",
-    "Best film I&apos;ve seen this year!",
-    "Boring and too long."
-]
 
-2. Получите предсказания от обеих моделей:
-# Fine-tuned predictions
-preds_ft = predict_fine_tuned(test_texts, model_ft, tokenizer)
+   ```python
+   test_texts = [
+       "This movie was absolutely fantastic!",
+       "Terrible, waste of my time.",
+       "It was okay, nothing special.",
+       "Best film I've seen this year!",
+       "Boring and too long.",
+   ]
+   ```
 
-# Baseline predictions (если есть)
-if baseline_model:
-    preds_baseline = predict_baseline(test_texts, baseline_model, baseline_vectorizer)
+2. Получите предсказания обеих моделей:
+
+   ```python
+   # Fine-tuned predictions.
+   preds_ft = predict_fine_tuned(test_texts, model_ft, tokenizer)
+
+   # Baseline predictions, если модель существует.
+   if baseline_model:
+       preds_baseline = predict_baseline(
+           test_texts,
+           baseline_model,
+           baseline_vectorizer,
+       )
+   ```
 
 3. Выведите сравнение:
-for i, text in enumerate(test_texts):
-    print(f&apos;\nТекст: {text}&apos;)
-    print(f&apos;Fine-tuned: {preds_ft[i]["prediction"]} (probs: {preds_ft[i]["probabilities"]})&apos;)
-    if baseline_model:
-        print(f&apos;Baseline: {preds_baseline[i]["prediction"]}&apos;)
-        print(f&apos;Совпадают: {preds_ft[i]["prediction"] == preds_baseline[i]["prediction"]}&apos;)
 
-ЗАДАЧА 5: Confusion Matrix для обеих моделей
+   ```python
+   for i, text in enumerate(test_texts):
+       print(f"\nТекст: {text}")
+       print(
+           f"Fine-tuned: {preds_ft[i]['prediction']} "
+           f"(probs: {preds_ft[i]['probabilities']})"
+       )
+
+       if baseline_model:
+           print(f"Baseline: {preds_baseline[i]['prediction']}")
+           print(
+               "Совпадают: "
+               f"{preds_ft[i]['prediction'] == preds_baseline[i]['prediction']}"
+           )
+   ```
+
+## Задача 5 — Confusion matrix для обеих моделей
 
 1. Загрузите тестовые данные:
-import pandas as pd
-from sklearn.model_selection import train_test_split
 
-df = pd.read_csv(&apos;your_dataset.csv&apos;)
-_, test_df, _, _ = train_test_split(df, df[&apos;label&apos;], test_size=0.2, random_state=42, stratify=df[&apos;label&apos;])
+   ```python
+   import pandas as pd
+   from sklearn.model_selection import train_test_split
 
-test_texts = test_df[&apos;text&apos;].tolist()
-test_labels = test_df[&apos;label&apos;].tolist()
+   df = pd.read_csv("your_dataset.csv")
+   _, test_df, _, _ = train_test_split(
+       df,
+       df["label"],
+       test_size=0.2,
+       random_state=42,
+       stratify=df["label"],
+   )
 
-2. Получите предсказания fine-tuned:
-preds_ft_all = predict_fine_tuned(test_texts, model_ft, tokenizer)
-y_pred_ft = [p[&apos;prediction&apos;] for p in preds_ft_all]
+   test_texts = test_df["text"].tolist()
+   test_labels = test_df["label"].tolist()
+   ```
+
+2. Получите предсказания fine-tuned модели:
+
+   ```python
+   preds_ft_all = predict_fine_tuned(test_texts, model_ft, tokenizer)
+   y_pred_ft = [p["prediction"] for p in preds_ft_all]
+   ```
+
 3. Постройте confusion matrix:
-from sklearn.metrics import confusion_matrix
-import matplotlib.pyplot as plt
-import seaborn as sns
 
-cm_ft = confusion_matrix(test_labels, y_pred_ft)
+   ```python
+   import matplotlib.pyplot as plt
+   import seaborn as sns
+   from sklearn.metrics import confusion_matrix
 
-plt.figure(figsize=(8, 6))
-sns.heatmap(cm_ft, annot=True, fmt=&apos;d&apos;, cmap=&apos;Blues&apos;)
-plt.title(&apos;Confusion Matrix - Fine-tuned Model&apos;)
-plt.ylabel(&apos;True Label&apos;)
-plt.xlabel(&apos;Predicted Label&apos;)
-plt.savefig(&apos;confusion_matrix_finetuned.png&apos;)
+   cm_ft = confusion_matrix(test_labels, y_pred_ft)
 
-ЗАДАЧА 6: Сравнение метрик
+   plt.figure(figsize=(8, 6))
+   sns.heatmap(cm_ft, annot=True, fmt="d", cmap="Blues")
+   plt.title("Confusion Matrix - Fine-tuned Model")
+   plt.ylabel("True Label")
+   plt.xlabel("Predicted Label")
+   plt.savefig("confusion_matrix_finetuned.png")
+   ```
 
-1. Посчитайте метрики для обеих моделей:
-from sklearn.metrics import classification_report, f1_score, accuracy_score
+## Задача 6 — Сравнение метрик
 
-# Fine-tuned
+Посчитайте метрики обеих моделей:
+
+```python
+from sklearn.metrics import accuracy_score, classification_report, f1_score
+
+# Fine-tuned model.
 print("=== Fine-tuned Model ===")
 print(classification_report(test_labels, y_pred_ft))
-f1_ft = f1_score(test_labels, y_pred_ft, average=&apos;macro&apos;)
+f1_ft = f1_score(test_labels, y_pred_ft, average="macro")
 acc_ft = accuracy_score(test_labels, y_pred_ft)
 
-# Baseline (если есть)
+# Baseline model, если она существует.
 if baseline_model:
-    preds_baseline_all = predict_baseline(test_texts, baseline_model, baseline_vectorizer)
-    y_pred_base = [p[&apos;prediction&apos;] for p in preds_baseline_all]
+    preds_baseline_all = predict_baseline(
+        test_texts,
+        baseline_model,
+        baseline_vectorizer,
+    )
+    y_pred_base = [p["prediction"] for p in preds_baseline_all]
 
     print("\n=== Baseline Model ===")
     print(classification_report(test_labels, y_pred_base))
-    f1_base = f1_score(test_labels, y_pred_base, average=&apos;macro&apos;)
+    f1_base = f1_score(test_labels, y_pred_base, average="macro")
     acc_base = accuracy_score(test_labels, y_pred_base)
 
-    print(f&apos;\n=== Сравнение ===&apos;)
-    print(f&apos;Fine-tuned F1: {f1_ft:.4f}, Accuracy: {acc_ft:.4f}&apos;)
-    print(f&apos;Baseline F1: {f1_base:.4f}, Accuracy: {acc_base:.4f}&apos;)
-    print(f&apos;Улучшение F1: {(f1_ft - f1_base) / f1_base * 100:.2f}%&apos;)
+    print("\n=== Сравнение ===")
+    print(f"Fine-tuned F1: {f1_ft:.4f}, Accuracy: {acc_ft:.4f}")
+    print(f"Baseline F1: {f1_base:.4f}, Accuracy: {acc_base:.4f}")
+    print(f"Улучшение F1: {(f1_ft - f1_base) / f1_base * 100:.2f}%")
+```
 
-ЗАДАЧА 7: Сохранение результатов сравнения
+## Задача 7 — Сохранение результатов сравнения
 
-with open(&apos;comparison_results.txt&apos;, &apos;w&apos;) as f:
-    f.write(&apos;=== Сравнение моделей ===\n\n&apos;)
-    f.write(f&apos;Fine-tuned Model:\n&apos;)
-    f.write(f&apos;  F1 (macro): {f1_ft:.4f}\n&apos;)
-    f.write(f&apos;  Accuracy: {acc_ft:.4f}\n&apos;)
+```python
+with open("comparison_results.txt", "w") as f:
+    f.write("=== Сравнение моделей ===\n\n")
+    f.write("Fine-tuned Model:\n")
+    f.write(f"  F1 (macro): {f1_ft:.4f}\n")
+    f.write(f"  Accuracy: {acc_ft:.4f}\n")
 
     if baseline_model:
-        f.write(f&apos;\nBaseline Model:\n&apos;)
-        f.write(f&apos;  F1 (macro): {f1_base:.4f}\n&apos;)
-        f.write(f&apos;  Accuracy: {acc_base:.4f}\n&apos;)
-        f.write(f&apos;\nУлучшение: {(f1_ft - f1_base) / f1_base * 100:.2f}%\n&apos;)
+        f.write("\nBaseline Model:\n")
+        f.write(f"  F1 (macro): {f1_base:.4f}\n")
+        f.write(f"  Accuracy: {acc_base:.4f}\n")
+        f.write(f"\nУлучшение: {(f1_ft - f1_base) / f1_base * 100:.2f}%\n")
+```
 
-ЧЕКПОИНТ:
-К концу дня вы должны иметь:
-• Функции predict_fine_tuned и predict_baseline
-• Confusion matrix для fine-tuned модели
-• Сравнение метрик между моделями
-• Файл comparison_results.txt с результатами
+## Чекпоинт
 
-В День 7 вы проведёте детальный анализ ошибок.
+К концу дня у вас должны быть:
+
+- [ ] функции `predict_fine_tuned` и `predict_baseline`;
+- [ ] confusion matrix для fine-tuned модели;
+- [ ] сравнение метрик моделей;
+- [ ] файл `comparison_results.txt` с результатами.
+
+> В День 7 вы проведёте детальный анализ ошибок.
