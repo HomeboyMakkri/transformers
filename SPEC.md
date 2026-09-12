@@ -25,7 +25,8 @@ Days 1 and 2 are specified below. Days 3–7 remain high-level until their requi
 
 - Load one `AutoTokenizer` and inspect its vocabulary size and maximum length.
 - Demonstrate tokens, token IDs, special tokens, and decoding for one text.
-- Provide `tokenize_texts(texts, max_length=128)` with padding, truncation, and PyTorch tensors.
+- Provide `tokenize_texts(texts, tokenizer, max_length=128)` with explicit
+  tokenizer injection, padding, truncation, and PyTorch tensors.
 - Provide `explain_tokenization(text, tokenizer)` and explain `input_ids` and `attention_mask`.
 
 ## Day 2 contract: hidden states

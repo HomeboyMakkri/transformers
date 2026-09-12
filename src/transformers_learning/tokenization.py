@@ -1,8 +1,9 @@
 """Tokenizer loading and inspection utilities for Day 1."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
-from transformers import AutoTokenizer, PreTrainedTokenizerBase
+from transformers import AutoTokenizer, BatchEncoding, PreTrainedTokenizerBase
 
 DEFAULT_MODEL_NAME = "distilbert-base-uncased"
 
@@ -87,6 +88,46 @@ def tokenize_single_text(
         input_ids=tuple(input_ids_list),
         attention_mask=tuple(attention_mask_list),
         decoded_text=decoded_text,
+    )
+
+
+def tokenize_texts(
+    texts: Sequence[str],
+    tokenizer: PreTrainedTokenizerBase,
+    max_length: int = 128,
+) -> BatchEncoding:
+    """Tokenize a non-empty text batch into aligned PyTorch tensors."""
+
+    if not texts:
+        raise ValueError("texts must contain at least one item")
+    if max_length < 1:
+        raise ValueError("max_length must be at least 1")
+
+    return tokenizer(
+        list(texts),
+        padding=True,
+        truncation=True,
+        max_length=max_length,
+        return_tensors="pt",
+    )
+
+
+def explain_tokenization(
+    text: str,
+    tokenizer: PreTrainedTokenizerBase,
+) -> str:
+    """Return a readable explanation of the single-text encode/decode path."""
+
+    walkthrough = tokenize_single_text(text, tokenizer)
+    return "\n".join(
+        (
+            f"Original text: {walkthrough.text}",
+            f"Tokens: {list(walkthrough.tokens)}",
+            f"Input IDs: {list(walkthrough.input_ids)}",
+            f"Attention mask: {list(walkthrough.attention_mask)}",
+            f"Token count: {len(walkthrough.tokens)}",
+            f"Decoded text: {walkthrough.decoded_text}",
+        )
     )
 
 

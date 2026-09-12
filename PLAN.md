@@ -24,13 +24,13 @@ Work on one item per request. For each item, read its matching `tasks/dayN.md` s
 
 ### D1-04 — Batch tokenization
 
-- [ ] Implement `tokenize_texts`; demonstrate padding, truncation, shapes, and masks.
+- [x] Implement `tokenize_texts`; demonstrate padding, truncation, shapes, and masks.
 - **Done when:** the function returns aligned PyTorch tensors for a text batch.
 - **Verify:** pytest covers batch size, matching shapes, padding mask, and `max_length`.
 
 ### D1-05 — Explanation helper and review
 
-- [ ] Implement `explain_tokenization` and review the complete Day 1 data flow.
+- [x] Implement `explain_tokenization` and review the complete Day 1 data flow.
 - **Done when:** the checkpoint in `tasks/day1.md` is satisfied and explainable.
 - **Verify:** run focused tests, Ruff, and a manual example; report any network-dependent check separately.
 
