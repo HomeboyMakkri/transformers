@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments and local configuration
+.venv/
+.env
+.env.*
+!.env.example
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE and OS files
+.idea/
+.vscode/
+.DS_Store
+
+# Hugging Face caches and downloaded model artifacts
+.cache/
+fine_tuned_model/
+*.bin
+*.safetensors
+*.pt
+*.pth
+*.pkl
+
+# Local datasets and generated experiment results
+data/
+*.csv
+*.parquet
+attention_layer*_head*.png
+confusion_matrix_*.png
+*_results.txt
+error_analysis.txt

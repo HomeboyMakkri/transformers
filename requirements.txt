@@ -1,0 +1,11 @@
+# Days 1-2: tokenization and hidden states
+transformers==5.17.0
+torch==2.14.0
+numpy==2.2.6
+scikit-learn==1.7.2
+
+# Days 3-7: visualizations, datasets, and demo application
+matplotlib==3.10.9
+seaborn==0.13.2
+pandas==2.3.3
+gradio==6.27.0

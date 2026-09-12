@@ -1,0 +1,7 @@
+-r requirements.txt
+
+# Interactive experiments and lightweight project checks
+jupyterlab==4.6.3
+ipykernel==7.3.0
+pytest==9.1.1
+ruff==0.16.7
