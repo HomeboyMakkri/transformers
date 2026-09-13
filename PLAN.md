@@ -62,7 +62,7 @@ Work on one item per request. For each item, read its matching `tasks/dayN.md` s
 
 ### D2-05 — Review
 
-- [ ] Review Day 2 concepts and the reusable API before proceeding to attention.
+- [x] Review Day 2 concepts and the reusable API before proceeding to attention.
 - **Done when:** the checkpoint in `tasks/day2.md` is satisfied and limitations are documented.
 - **Verify:** run focused offline tests, Ruff, and one separate real-model smoke check.
 
