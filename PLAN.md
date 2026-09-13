@@ -50,7 +50,7 @@ Work on one item per request. For each item, read its matching `tasks/dayN.md` s
 
 ### D2-03 — Batched embeddings
 
-- [ ] Implement `get_embeddings` with batching and NumPy output.
+- [x] Implement `get_embeddings` with batching and NumPy output.
 - **Done when:** it returns one row per input text in the original order, including a partial final batch.
 - **Verify:** fast pytest coverage checks batching, order, output shape, and empty-input policy.
 
