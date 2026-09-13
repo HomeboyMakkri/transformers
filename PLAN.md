@@ -38,7 +38,7 @@ Work on one item per request. For each item, read its matching `tasks/dayN.md` s
 
 ### D2-01 — Model inference
 
-- [ ] Load the matching `AutoModel`; use `eval()` and `torch.no_grad()`; inspect its output type.
+- [x] Load the matching `AutoModel`; use `eval()` and `torch.no_grad()`; inspect its output type.
 - **Done when:** tokenizer and model share `model_name`, and inference performs no training.
 - **Verify:** one real-model smoke run reports device and output shape.
 

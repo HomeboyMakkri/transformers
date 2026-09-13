@@ -3,6 +3,7 @@
 # Interactive experiments and lightweight project checks
 jupyterlab==4.6.3
 ipykernel==7.3.0
+ipywidgets==8.1.9
 pytest==9.1.1
 pyright==1.1.414
 ruff==0.16.7
