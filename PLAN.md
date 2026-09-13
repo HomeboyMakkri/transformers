@@ -56,7 +56,7 @@ Work on one item per request. For each item, read its matching `tasks/dayN.md` s
 
 ### D2-04 — Similarity experiment
 
-- [ ] Implement cosine similarity and compare several deliberately chosen text pairs.
+- [x] Implement cosine similarity and compare several deliberately chosen text pairs.
 - **Done when:** results are interpreted as embedding similarity, not guaranteed sentiment quality.
 - **Verify:** check type, finiteness, and numeric bounds; do not require a specific ranking from the pretrained model.
 

@@ -1,3 +1,4 @@
+import math
 from typing import cast
 
 import pytest
@@ -14,6 +15,7 @@ from transformers_learning.modeling import (
     extract_first_token_representation,
     get_embeddings,
     load_model,
+    similarity,
 )
 
 
@@ -169,3 +171,14 @@ def test_get_embeddings_rejects_invalid_input(
 
     with pytest.raises(ValueError, match=message):
         get_embeddings(texts, tokenizer, model, batch_size=batch_size)
+
+
+def test_similarity_returns_finite_bounded_float_for_two_texts() -> None:
+    tokenizer, fake_tokenizer, model, _ = make_embedding_dependencies()
+
+    score = similarity("Text A", "Text B", tokenizer, model)
+
+    assert fake_tokenizer.received_batches == [["Text A", "Text B"]]
+    assert isinstance(score, float)
+    assert math.isfinite(score)
+    assert -1.0 <= score <= 1.0

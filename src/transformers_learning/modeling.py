@@ -6,6 +6,7 @@ from typing import Any, cast
 import numpy as np
 import numpy.typing as npt
 import torch
+from sklearn.metrics.pairwise import cosine_similarity
 from transformers import AutoModel, PreTrainedModel, PreTrainedTokenizerBase
 from transformers.modeling_outputs import BaseModelOutput
 
@@ -69,3 +70,16 @@ def get_embeddings(
         all_embeddings.append(first_token.cpu().numpy())
 
     return np.vstack(all_embeddings)
+
+
+def similarity(
+    text1: str,
+    text2: str,
+    tokenizer: PreTrainedTokenizerBase,
+    model: PreTrainedModel,
+) -> float:
+    """Return bounded cosine similarity between two first-token representations."""
+
+    embeddings = get_embeddings((text1, text2), tokenizer, model)
+    score = cosine_similarity(embeddings[0:1], embeddings[1:2])[0, 0]
+    return float(np.clip(score, -1.0, 1.0))
