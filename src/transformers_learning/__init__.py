@@ -1,6 +1,6 @@
 """Reusable learning utilities for the transformers project."""
 
-from .modeling import load_model
+from .modeling import extract_first_token_representation, load_model
 from .tokenization import (
     DEFAULT_MODEL_NAME,
     TokenizationWalkthrough,
@@ -17,6 +17,7 @@ __all__ = [
     "TokenizationWalkthrough",
     "TokenizerInfo",
     "explain_tokenization",
+    "extract_first_token_representation",
     "inspect_tokenizer",
     "load_model",
     "load_tokenizer",

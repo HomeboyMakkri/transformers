@@ -44,7 +44,7 @@ Work on one item per request. For each item, read its matching `tasks/dayN.md` s
 
 ### D2-02 — Representation walkthrough
 
-- [ ] Inspect `last_hidden_state` and extract the first-token representation.
+- [x] Inspect `last_hidden_state` and extract the first-token representation.
 - **Done when:** `[batch, sequence, hidden]` and `[batch, hidden]` are explained from actual tensors.
 - **Verify:** assert dimensional invariants, not exact embedding values.
 
