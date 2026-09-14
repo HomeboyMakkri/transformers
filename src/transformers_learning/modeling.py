@@ -1,4 +1,4 @@
-"""Model loading and hidden-state utilities for Day 2."""
+"""Model loading and inference utilities for the learning project."""
 
 from collections.abc import Sequence
 from typing import Any, cast
@@ -15,10 +15,14 @@ from .tokenization import DEFAULT_MODEL_NAME, tokenize_texts
 
 def load_model(
     model_name: str = DEFAULT_MODEL_NAME,
+    output_attentions: bool = False,
 ) -> PreTrainedModel:
-    """Load the model matching the tokenizer and prepare it for inference."""
+    """Load a matching model and prepare it for inference."""
 
-    model = AutoModel.from_pretrained(model_name)
+    model = AutoModel.from_pretrained(
+        model_name,
+        output_attentions=output_attentions,
+    )
     model.eval()
     return model
 

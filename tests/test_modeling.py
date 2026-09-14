@@ -32,17 +32,45 @@ def test_load_model_uses_requested_checkpoint_and_enables_eval_mode(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fake_model = FakeModel()
-    requested_names: list[str] = []
+    received_calls: list[tuple[str, bool]] = []
 
-    def fake_from_pretrained(model_name: str) -> PreTrainedModel:
-        requested_names.append(model_name)
+    def fake_from_pretrained(
+        model_name: str,
+        *,
+        output_attentions: bool,
+    ) -> PreTrainedModel:
+        received_calls.append((model_name, output_attentions))
         return cast(PreTrainedModel, fake_model)
 
     monkeypatch.setattr(AutoModel, "from_pretrained", fake_from_pretrained)
 
     model = load_model("example-checkpoint")
 
-    assert requested_names == ["example-checkpoint"]
+    assert received_calls == [("example-checkpoint", False)]
+    assert model is fake_model
+    assert model.training is False
+
+
+def test_load_model_requests_attention_outputs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_model = FakeModel()
+    received_output_attentions: list[bool] = []
+
+    def fake_from_pretrained(
+        model_name: str,
+        *,
+        output_attentions: bool,
+    ) -> PreTrainedModel:
+        assert model_name == "example-checkpoint"
+        received_output_attentions.append(output_attentions)
+        return cast(PreTrainedModel, fake_model)
+
+    monkeypatch.setattr(AutoModel, "from_pretrained", fake_from_pretrained)
+
+    model = load_model("example-checkpoint", output_attentions=True)
+
+    assert received_output_attentions == [True]
     assert model is fake_model
     assert model.training is False
 

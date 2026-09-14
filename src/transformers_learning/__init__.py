@@ -1,5 +1,6 @@
 """Reusable learning utilities for the transformers project."""
 
+from .attention import extract_attention_matrix, visualize_attention
 from .modeling import (
     extract_first_token_representation,
     get_embeddings,
@@ -22,6 +23,7 @@ __all__ = [
     "TokenizationWalkthrough",
     "TokenizerInfo",
     "explain_tokenization",
+    "extract_attention_matrix",
     "extract_first_token_representation",
     "get_embeddings",
     "inspect_tokenizer",
@@ -30,4 +32,5 @@ __all__ = [
     "similarity",
     "tokenize_single_text",
     "tokenize_texts",
+    "visualize_attention",
 ]
