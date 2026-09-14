@@ -6,7 +6,7 @@ Build a seven-day sentiment-analysis project while understanding tokenization, h
 
 ## Current scope
 
-Days 1 and 2 are specified below. Days 3–7 remain high-level until their requirements are discussed; later-day code is out of scope for now.
+Days 1–3 are specified below. Days 4–7 remain high-level until their requirements are discussed; later-day code is out of scope for now.
 
 ## Accepted decisions
 
@@ -36,6 +36,16 @@ Days 1 and 2 are specified below. Days 3–7 remain high-level until their requi
 - Extract the first-token representation as `[batch, hidden]` and state the limitations of calling it a CLS embedding.
 - Provide batched `get_embeddings(...)` returning one NumPy row per input text.
 - Compare text representations with cosine similarity and interpret the result cautiously.
+
+## Day 3 contract: attention inspection
+
+- Load the shared `AutoModel` with `output_attentions=True`, keeping evaluation mode and `torch.no_grad()` for inference.
+- Inspect the returned attention weights across layers and explain their shape as `[batch, heads, sequence, sequence]`.
+- Extract one selected layer and head as a `[sequence, sequence]` matrix, where rows represent query tokens and columns represent key tokens.
+- Visualize selected attention matrices as token-labelled heatmaps for a short English text.
+- Compare selected early, middle, and late layers and multiple heads, treating the results as observations of model behavior rather than fixed semantic roles.
+- Explicitly distinguish attention weights from the input `attention_mask`: the mask hides padding positions, while attention weights describe token-to-token interactions produced by the model.
+- Treat attention plots as exploratory diagnostics, not as sufficient evidence that a token caused a sentiment prediction; sentiment classification remains a later-day task.
 
 ## Project invariants
 

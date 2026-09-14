@@ -66,9 +66,40 @@ Work on one item per request. For each item, read its matching `tasks/dayN.md` s
 - **Done when:** the checkpoint in `tasks/day2.md` is satisfied and limitations are documented.
 - **Verify:** run focused offline tests, Ruff, and one separate real-model smoke check.
 
+## Day 3 — Attention
+
+### D3-01 — Model inference with attention outputs
+
+- [ ] Load the shared `AutoModel` with `output_attentions=True` and run one small example in evaluation mode under `torch.no_grad()`.
+- **Done when:** the model output exposes attention weights without changing the tokenizer/model checkpoint.
+- **Verify:** report the output type and the number of attention layers.
+
+### D3-02 — Attention tensor walkthrough
+
+- [ ] Inspect attention as `[batch, heads, sequence, sequence]` and extract one layer and one head as `[sequence, sequence]`.
+- **Done when:** batch, layer, head, query, and key dimensions are explained correctly.
+- **Verify:** assert dimensional invariants rather than exact attention values.
+
+### D3-03 — Attention visualization
+
+- [ ] Implement a small visualization helper that labels both axes with tokens and renders one selected layer/head as a heatmap.
+- **Done when:** attention for a short text can be saved and inspected for selected layers and heads.
+- **Verify:** keep plots as generated artifacts outside Git and check that the selected indices are valid.
+
+### D3-04 — Layer and head comparison
+
+- [ ] Compare attention heatmaps from early, middle, and late layers and from several heads of one layer.
+- **Done when:** observations distinguish layer/head variation from universal model rules.
+- **Verify:** use small, reproducible examples and describe observations cautiously.
+
+### D3-05 — Attention interpretation review
+
+- [ ] Explain the difference between `attention_mask` and attention weights, and document that attention visualization is not by itself a reliable sentiment explanation.
+- **Done when:** the Day 3 checkpoint in `tasks/day3.md` is satisfied without introducing classification work.
+- **Verify:** run focused offline checks plus a separate real-model visualization smoke check.
+
 ## Later backlog — detail only when reached
 
-- [ ] **Day 3:** inspect and visualize attention.
 - [ ] **Day 4:** build a frozen-embedding classification baseline.
 - [ ] **Day 5:** fine-tune a sequence classifier.
 - [ ] **Day 6:** compare both approaches on the same held-out data.
