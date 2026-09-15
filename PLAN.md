@@ -112,17 +112,21 @@ Work on one item per request. For each item, read its matching `tasks/dayN.md` s
 - **Verify:** fast offline tests cover the metadata, source-column conversion,
   defensive copying, and invalid/missing labels.
 
-### D4-02 — Frozen embedding dataset
+### D4-02 — Tokenization and frozen embedding dataset
 
-- [x] Combine a validated `text,label` table with the existing `get_embeddings`
-  utility to produce aligned features `[n_samples, hidden_size]` and labels
-  `[n_samples]`.
+- [x] Reuse the shared `load_tokenizer`, `tokenize_texts`, `load_model`, and
+  `get_embeddings` utilities from Days 1–2 with `distilbert-base-uncased`.
+- [x] Combine a validated `text,label` table with `get_embeddings` to produce
+  aligned features `[n_samples, hidden_size]` and labels `[n_samples]`.
 - [x] Validate model-output rank, alignment, feature width, and finiteness at
   the project boundary.
 - **Done when:** each feature row corresponds to its original text and label;
-  no classifier is fitted and no label influences embedding values.
+  `get_embeddings` performs inference in `eval()`/`no_grad()`, so no classifier
+  is fitted and no label influences embedding values.
 - **Verify:** offline tests mock the embedding extractor and cover row order,
-  batch-size forwarding, validation before model calls, and malformed outputs.
+  batch-size forwarding, validation before model calls, and malformed outputs;
+  a later integration run shows tokenization and `[n_samples, hidden_size]` on
+  a small real SST-2 sample.
 
 ### D4-03 — Held-out split
 
@@ -135,9 +139,43 @@ Work on one item per request. For each item, read its matching `tasks/dayN.md` s
 - **Verify:** offline tests assert split sizes, class preservation,
   reproducibility, no row overlap, and invalid public inputs.
 
+### D4-04 — Logistic Regression training
+
+- [ ] Construct `LogisticRegression(max_iter=1000, n_jobs=-1)`.
+- [ ] Fit it only on `X_train, y_train`; do not pass `X_test` or `y_test` to
+  `fit`, parameter selection, or preprocessing.
+- **Done when:** the returned classifier is fitted from the frozen training
+  embeddings and can later predict binary labels.
+- **Verify:** offline tests assert the constructor parameters and that `fit`
+  receives precisely the training partition, never the held-out partition.
+
+### D4-05 — Held-out evaluation and result record
+
+- [ ] Predict once on `X_test` with the fitted baseline classifier.
+- [ ] Produce `classification_report(y_test, y_pred)` and calculate
+  `f1_score(y_test, y_pred, average="macro")`; include per-class support in the
+  reported output.
+- [ ] Save only macro F1 and minimal run context (checkpoint, dataset ID,
+  label mapping, and split parameters) to ignored `baseline_results.txt`.
+- **Done when:** macro F1 is reported strictly for the held-out set and is not
+  used to choose settings in this baseline run.
+- **Verify:** offline tests cover prediction/evaluation inputs and metric
+  bounds; a separate real-model integration run records the actual metric.
+
+### D4-06 — Day 4 notebook walkthrough and review
+
+- [ ] Add a thin Day 4 notebook that calls the reusable functions: inspect
+  tokenization for two or three texts, show one small embedding shape, then
+  run the already-defined baseline flow.
+- [ ] Explain that the first-token vector is a contextual feature, not a
+  sentiment probability, and that macro F1 weights the two classes equally.
+- **Done when:** the notebook contains explanation and calls only; reusable
+  logic and tests remain in `src/` and `tests/`.
+- **Verify:** run the notebook only after explicitly allowing the model/data
+  download; keep generated results and caches out of Git.
+
 ## Later backlog — detail only when reached
 
-- [ ] **Day 4:** extract frozen embeddings, create the one held-out split, and train/evaluate Logistic Regression.
 - [ ] **Day 5:** fine-tune a sequence classifier.
 - [ ] **Day 6:** compare both approaches on the same held-out data.
 - [ ] **Day 7:** analyze errors and build a small demo.
