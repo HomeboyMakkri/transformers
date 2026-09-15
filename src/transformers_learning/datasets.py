@@ -2,7 +2,12 @@
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from io import BytesIO
 from numbers import Integral
+from pathlib import Path
+from urllib.error import URLError
+from urllib.request import urlopen
+from zipfile import BadZipFile, ZipFile
 
 import pandas as pd
 
@@ -10,6 +15,8 @@ TEXT_COLUMN = "text"
 LABEL_COLUMN = "label"
 SST2_SOURCE_TEXT_COLUMN = "sentence"
 SST2_LABEL_MAP: Mapping[int, str] = {0: "negative", 1: "positive"}
+SST2_ARCHIVE_URL = "https://dl.fbaipublicfiles.com/glue/data/SST-2.zip"
+SST2_ARCHIVE_TRAIN_PATH = "SST-2/train.tsv"
 
 
 @dataclass(frozen=True)
@@ -42,6 +49,40 @@ SST2_METADATA = SentimentDatasetMetadata(
 
 class SentimentDatasetValidationError(ValueError):
     """Raised when a table cannot be used as binary sentiment data."""
+
+
+class SST2DownloadError(RuntimeError):
+    """Raised when the official SST-2 archive cannot provide ``train.tsv``."""
+
+
+def ensure_sst2_train_data(path: Path) -> Path:
+    """Return local SST-2 training data, downloading it once when absent.
+
+    The archive is fetched from the URL referenced by the SST-2 dataset card.
+    Only its labelled training TSV is stored under the caller-selected ignored
+    data directory; the archive itself is never kept in the project.
+    """
+
+    if path.is_file():
+        return path
+    if path.exists():
+        raise SST2DownloadError(f"SST-2 training path is not a file: {path}")
+
+    try:
+        with urlopen(SST2_ARCHIVE_URL, timeout=30) as response:
+            archive_bytes = response.read()
+        with ZipFile(BytesIO(archive_bytes)) as archive, archive.open(
+            SST2_ARCHIVE_TRAIN_PATH
+        ) as source:
+            train_data = source.read()
+    except (BadZipFile, KeyError, OSError, URLError) as error:
+        raise SST2DownloadError("Could not download SST-2 training data") from error
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = path.with_suffix(".tsv.tmp")
+    temporary_path.write_bytes(train_data)
+    temporary_path.replace(path)
+    return path
 
 
 def adapt_sst2_split(dataframe: pd.DataFrame) -> pd.DataFrame:

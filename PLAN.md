@@ -152,6 +152,7 @@ Work on one item per request. For each item, read its matching `tasks/dayN.md` s
 
 ### D4-05 — Held-out evaluation and result record
 
+- [x] **Status: implementation complete; the real SST-2 metric remains a separate integration run.**
 - [x] Implement prediction on `X_test` with the fitted baseline classifier.
 - [x] Implement `classification_report(y_test, y_pred)` and calculate
   `f1_score(y_test, y_pred, average="macro")`; include per-class support in the
@@ -165,10 +166,11 @@ Work on one item per request. For each item, read its matching `tasks/dayN.md` s
 
 ### D4-06 — Day 4 notebook walkthrough and review
 
-- [ ] Add a thin Day 4 notebook that calls the reusable functions: inspect
+- [x] **Status: implementation complete; the real-model execution remains a separate integration run.**
+- [x] Add a thin Day 4 notebook that calls the reusable functions: inspect
   tokenization for two or three texts, show one small embedding shape, then
   run the already-defined baseline flow.
-- [ ] Explain that the first-token vector is a contextual feature, not a
+- [x] Explain that the first-token vector is a contextual feature, not a
   sentiment probability, and that macro F1 weights the two classes equally.
 - **Done when:** the notebook contains explanation and calls only; reusable
   logic and tests remain in `src/` and `tests/`.
