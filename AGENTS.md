@@ -34,4 +34,7 @@
   `.venv/bin/pyright`, and `.venv/bin/python -m pytest`.
 - Report exactly what was verified and what remains unverified. Warn before long training runs or large downloads.
 - Keep datasets, caches, generated plots, serialized models, and experiment results out of Git unless explicitly requested.
-- Do not commit, push, or rewrite user changes unless explicitly requested.
+- After each completed PLAN implementation step and its required verification,
+  create one focused commit with an English commit message. Do not combine
+  unrelated steps in one commit.
+- Do not push or rewrite user changes unless explicitly requested.
