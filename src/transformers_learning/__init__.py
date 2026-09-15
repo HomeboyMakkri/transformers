@@ -6,6 +6,7 @@ from .baseline import (
     FrozenEmbeddingSplit,
     prepare_frozen_embedding_dataset,
     split_frozen_embedding_dataset,
+    train_logistic_regression,
 )
 from .datasets import (
     LABEL_COLUMN,
@@ -61,6 +62,7 @@ __all__ = [
     "split_frozen_embedding_dataset",
     "tokenize_single_text",
     "tokenize_texts",
+    "train_logistic_regression",
     "validate_sentiment_dataframe",
     "visualize_attention",
 ]

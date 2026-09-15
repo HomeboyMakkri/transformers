@@ -141,8 +141,9 @@ Work on one item per request. For each item, read its matching `tasks/dayN.md` s
 
 ### D4-04 — Logistic Regression training
 
-- [ ] Construct `LogisticRegression(max_iter=1000, n_jobs=-1)`.
-- [ ] Fit it only on `X_train, y_train`; do not pass `X_test` or `y_test` to
+- [x] **Status: complete.**
+- [x] Construct `LogisticRegression(max_iter=1000, n_jobs=-1)`.
+- [x] Fit it only on `X_train, y_train`; do not pass `X_test` or `y_test` to
   `fit`, parameter selection, or preprocessing.
 - **Done when:** the returned classifier is fitted from the frozen training
   embeddings and can later predict binary labels.

@@ -9,8 +9,10 @@ from transformers import PreTrainedModel, PreTrainedTokenizerBase
 from transformers_learning import baseline
 from transformers_learning.baseline import (
     FrozenEmbeddingDataset,
+    FrozenEmbeddingSplit,
     prepare_frozen_embedding_dataset,
     split_frozen_embedding_dataset,
+    train_logistic_regression,
 )
 from transformers_learning.datasets import SentimentDatasetValidationError
 
@@ -137,3 +139,53 @@ def test_split_frozen_embedding_dataset_rejects_invalid_public_dataset(
 
     with pytest.raises(ValueError, match=message):
         split_frozen_embedding_dataset(dataset)
+
+
+def test_train_logistic_regression_fits_only_the_training_partition(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    received: dict[str, object] = {}
+
+    class FakeLogisticRegression:
+        def __init__(self, *, max_iter: int, n_jobs: int) -> None:
+            received["max_iter"] = max_iter
+            received["n_jobs"] = n_jobs
+
+        def fit(
+            self,
+            features: npt.NDArray[np.floating[Any]],
+            labels: npt.NDArray[np.int64],
+        ) -> "FakeLogisticRegression":
+            received["features"] = features
+            received["labels"] = labels
+            return self
+
+    monkeypatch.setattr(baseline, "LogisticRegression", FakeLogisticRegression)
+    split = FrozenEmbeddingSplit(
+        X_train=np.array([[1.0, 0.0], [0.0, 1.0], [1.5, 0.0], [0.0, 1.5]]),
+        y_train=np.array([0, 1, 0, 1], dtype=np.int64),
+        X_test=np.array([[999.0, 999.0], [888.0, 888.0]]),
+        y_test=np.array([1, 0], dtype=np.int64),
+    )
+
+    classifier = train_logistic_regression(split)
+
+    assert isinstance(classifier, FakeLogisticRegression)
+    assert received == {
+        "max_iter": 1000,
+        "n_jobs": -1,
+        "features": split.X_train,
+        "labels": split.y_train,
+    }
+
+
+def test_train_logistic_regression_rejects_an_invalid_training_partition() -> None:
+    split = FrozenEmbeddingSplit(
+        X_train=np.array([[1.0], [2.0]]),
+        y_train=np.array([0, 0], dtype=np.int64),
+        X_test=np.array([[3.0], [4.0]]),
+        y_test=np.array([0, 1], dtype=np.int64),
+    )
+
+    with pytest.raises(ValueError, match="both SST-2"):
+        train_logistic_regression(split)

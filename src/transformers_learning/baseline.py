@@ -6,6 +6,7 @@ from typing import Any, cast
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
+from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
 
@@ -83,6 +84,21 @@ def split_frozen_embedding_dataset(
     )
 
 
+def train_logistic_regression(
+    split: FrozenEmbeddingSplit,
+) -> LogisticRegression:
+    """Fit the Day 4 baseline on frozen training embeddings only.
+
+    ``X_test`` and ``y_test`` intentionally do not appear in this function's
+    training path. They remain untouched until the held-out evaluation step.
+    """
+
+    _validate_training_partition(split.X_train, split.y_train)
+    classifier = LogisticRegression(max_iter=1000, n_jobs=-1)
+    classifier.fit(split.X_train, split.y_train)
+    return classifier
+
+
 def _validate_frozen_embedding_dataset(dataset: FrozenEmbeddingDataset) -> None:
     """Check public dataclass inputs before they reach scikit-learn."""
 
@@ -98,3 +114,23 @@ def _validate_frozen_embedding_dataset(dataset: FrozenEmbeddingDataset) -> None:
         raise ValueError("Frozen embeddings must contain only finite values")
     if not np.array_equal(np.unique(dataset.labels), np.array([0, 1])):
         raise ValueError("Frozen labels must contain both SST-2 classes 0 and 1")
+
+
+def _validate_training_partition(
+    features: npt.NDArray[np.floating[Any]],
+    labels: npt.NDArray[np.int64],
+) -> None:
+    """Validate only the data that will reach the classifier's ``fit`` call."""
+
+    if features.ndim != 2:
+        raise ValueError("Training embeddings must have shape [samples, hidden]")
+    if labels.ndim != 1:
+        raise ValueError("Training labels must have shape [samples]")
+    if features.shape[0] != labels.shape[0]:
+        raise ValueError("Training embedding row count must match the label count")
+    if features.shape[1] == 0:
+        raise ValueError("Training embeddings must contain at least one feature")
+    if not np.isfinite(features).all():
+        raise ValueError("Training embeddings must contain only finite values")
+    if not np.array_equal(np.unique(labels), np.array([0, 1])):
+        raise ValueError("Training labels must contain both SST-2 classes 0 and 1")
