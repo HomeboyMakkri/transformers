@@ -124,6 +124,17 @@ Work on one item per request. For each item, read its matching `tasks/dayN.md` s
 - **Verify:** offline tests mock the embedding extractor and cover row order,
   batch-size forwarding, validation before model calls, and malformed outputs.
 
+### D4-03 — Held-out split
+
+- [x] Split frozen features and labels once with `test_size=0.2`,
+  `random_state=42`, and `stratify=labels`.
+- [x] Reserve the test partition for final evaluation; no training or model
+  selection code can receive it at this stage.
+- **Done when:** both classes occur in the 80/20 partitions and the result is
+  deterministic for identical input rows.
+- **Verify:** offline tests assert split sizes, class preservation,
+  reproducibility, no row overlap, and invalid public inputs.
+
 ## Later backlog — detail only when reached
 
 - [ ] **Day 4:** extract frozen embeddings, create the one held-out split, and train/evaluate Logistic Regression.

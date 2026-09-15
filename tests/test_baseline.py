@@ -7,7 +7,11 @@ import pytest
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
 
 from transformers_learning import baseline
-from transformers_learning.baseline import prepare_frozen_embedding_dataset
+from transformers_learning.baseline import (
+    FrozenEmbeddingDataset,
+    prepare_frozen_embedding_dataset,
+    split_frozen_embedding_dataset,
+)
 from transformers_learning.datasets import SentimentDatasetValidationError
 
 
@@ -89,3 +93,47 @@ def test_prepare_frozen_embedding_dataset_rejects_invalid_model_output(
             cast(PreTrainedTokenizerBase, object()),
             cast(PreTrainedModel, object()),
         )
+
+
+def test_split_frozen_embedding_dataset_is_stratified_and_reproducible() -> None:
+    dataset = FrozenEmbeddingDataset(
+        features=np.column_stack((np.arange(10, dtype=float), np.arange(10, dtype=float))),
+        labels=np.array([0, 0, 0, 0, 0, 1, 1, 1, 1, 1], dtype=np.int64),
+    )
+
+    first_split = split_frozen_embedding_dataset(dataset)
+    second_split = split_frozen_embedding_dataset(dataset)
+
+    assert first_split.X_train.shape == (8, 2)
+    assert first_split.X_test.shape == (2, 2)
+    assert first_split.y_train.tolist().count(0) == 4
+    assert first_split.y_train.tolist().count(1) == 4
+    assert first_split.y_test.tolist().count(0) == 1
+    assert first_split.y_test.tolist().count(1) == 1
+    assert np.array_equal(first_split.X_train, second_split.X_train)
+    assert np.array_equal(first_split.X_test, second_split.X_test)
+    assert np.array_equal(first_split.y_train, second_split.y_train)
+    assert np.array_equal(first_split.y_test, second_split.y_test)
+    assert set(first_split.X_train[:, 0]) | set(first_split.X_test[:, 0]) == set(
+        np.arange(10, dtype=float)
+    )
+    assert set(first_split.X_train[:, 0]).isdisjoint(set(first_split.X_test[:, 0]))
+
+
+@pytest.mark.parametrize(
+    ("features", "labels", "message"),
+    (
+        (np.array([1.0, 2.0]), np.array([0, 1], dtype=np.int64), "shape"),
+        (np.array([[1.0], [2.0]]), np.array([[0], [1]], dtype=np.int64), "labels"),
+        (np.array([[1.0], [2.0]]), np.array([0, 0], dtype=np.int64), "both SST-2"),
+    ),
+)
+def test_split_frozen_embedding_dataset_rejects_invalid_public_dataset(
+    features: npt.NDArray[np.floating[Any]],
+    labels: npt.NDArray[np.int64],
+    message: str,
+) -> None:
+    dataset = FrozenEmbeddingDataset(features=features, labels=labels)
+
+    with pytest.raises(ValueError, match=message):
+        split_frozen_embedding_dataset(dataset)

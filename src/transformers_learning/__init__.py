@@ -1,7 +1,12 @@
 """Reusable learning utilities for the transformers project."""
 
 from .attention import extract_attention_matrix, visualize_attention
-from .baseline import FrozenEmbeddingDataset, prepare_frozen_embedding_dataset
+from .baseline import (
+    FrozenEmbeddingDataset,
+    FrozenEmbeddingSplit,
+    prepare_frozen_embedding_dataset,
+    split_frozen_embedding_dataset,
+)
 from .datasets import (
     LABEL_COLUMN,
     SST2_LABEL_MAP,
@@ -37,6 +42,7 @@ __all__ = [
     "SST2_METADATA",
     "TEXT_COLUMN",
     "FrozenEmbeddingDataset",
+    "FrozenEmbeddingSplit",
     "SentimentDatasetMetadata",
     "SentimentDatasetValidationError",
     "TokenizationWalkthrough",
@@ -52,6 +58,7 @@ __all__ = [
     "load_tokenizer",
     "prepare_frozen_embedding_dataset",
     "similarity",
+    "split_frozen_embedding_dataset",
     "tokenize_single_text",
     "tokenize_texts",
     "validate_sentiment_dataframe",
