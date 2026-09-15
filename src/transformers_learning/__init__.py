@@ -2,9 +2,12 @@
 
 from .attention import extract_attention_matrix, visualize_attention
 from .baseline import (
+    BaselineEvaluation,
     FrozenEmbeddingDataset,
     FrozenEmbeddingSplit,
+    evaluate_logistic_regression,
     prepare_frozen_embedding_dataset,
+    save_baseline_results,
     split_frozen_embedding_dataset,
     train_logistic_regression,
 )
@@ -42,6 +45,7 @@ __all__ = [
     "SST2_LABEL_MAP",
     "SST2_METADATA",
     "TEXT_COLUMN",
+    "BaselineEvaluation",
     "FrozenEmbeddingDataset",
     "FrozenEmbeddingSplit",
     "SentimentDatasetMetadata",
@@ -49,6 +53,7 @@ __all__ = [
     "TokenizationWalkthrough",
     "TokenizerInfo",
     "adapt_sst2_split",
+    "evaluate_logistic_regression",
     "explain_tokenization",
     "extract_attention_matrix",
     "extract_first_token_representation",
@@ -58,6 +63,7 @@ __all__ = [
     "load_model",
     "load_tokenizer",
     "prepare_frozen_embedding_dataset",
+    "save_baseline_results",
     "similarity",
     "split_frozen_embedding_dataset",
     "tokenize_single_text",

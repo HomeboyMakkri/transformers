@@ -1,16 +1,21 @@
+from pathlib import Path
 from typing import Any, cast
 
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import pytest
+from sklearn.linear_model import LogisticRegression
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
 
 from transformers_learning import baseline
 from transformers_learning.baseline import (
+    BaselineEvaluation,
     FrozenEmbeddingDataset,
     FrozenEmbeddingSplit,
+    evaluate_logistic_regression,
     prepare_frozen_embedding_dataset,
+    save_baseline_results,
     split_frozen_embedding_dataset,
     train_logistic_regression,
 )
@@ -189,3 +194,81 @@ def test_train_logistic_regression_rejects_an_invalid_training_partition() -> No
 
     with pytest.raises(ValueError, match="both SST-2"):
         train_logistic_regression(split)
+
+
+def test_evaluate_logistic_regression_uses_only_held_out_features() -> None:
+    received: dict[str, object] = {}
+
+    class FakeClassifier:
+        def predict(
+            self, features: npt.NDArray[np.floating[Any]]
+        ) -> npt.NDArray[np.int64]:
+            received["features"] = features
+            return np.array([0, 1], dtype=np.int64)
+
+    split = FrozenEmbeddingSplit(
+        X_train=np.array([[10.0], [20.0], [30.0], [40.0]]),
+        y_train=np.array([0, 1, 0, 1], dtype=np.int64),
+        X_test=np.array([[101.0], [202.0]]),
+        y_test=np.array([0, 1], dtype=np.int64),
+    )
+
+    evaluation = evaluate_logistic_regression(
+        cast(LogisticRegression, FakeClassifier()), split
+    )
+
+    assert received == {"features": split.X_test}
+    assert evaluation.predictions.tolist() == [0, 1]
+    assert evaluation.macro_f1 == 1.0
+    assert "negative" in evaluation.classification_report
+    assert "positive" in evaluation.classification_report
+
+
+@pytest.mark.parametrize(
+    ("predictions", "message"),
+    (
+        (np.array([0], dtype=np.int64), "align"),
+        (np.array([0, 2], dtype=np.int64), "only SST-2"),
+    ),
+)
+def test_evaluate_logistic_regression_rejects_invalid_predictions(
+    predictions: npt.NDArray[np.int64],
+    message: str,
+) -> None:
+    class FakeClassifier:
+        def predict(
+            self, features: npt.NDArray[np.floating[Any]]
+        ) -> npt.NDArray[np.int64]:
+            return predictions
+
+    split = FrozenEmbeddingSplit(
+        X_train=np.array([[1.0], [2.0]]),
+        y_train=np.array([0, 1], dtype=np.int64),
+        X_test=np.array([[3.0], [4.0]]),
+        y_test=np.array([0, 1], dtype=np.int64),
+    )
+
+    with pytest.raises(ValueError, match=message):
+        evaluate_logistic_regression(cast(LogisticRegression, FakeClassifier()), split)
+
+
+def test_save_baseline_results_writes_only_metric_and_run_context(
+    tmp_path: Path,
+) -> None:
+    evaluation = BaselineEvaluation(
+        predictions=np.array([0, 1], dtype=np.int64),
+        classification_report="not persisted",
+        macro_f1=0.75,
+    )
+    result_path = tmp_path / "nested" / "baseline_results.txt"
+
+    save_baseline_results(evaluation, result_path, model_name="test-checkpoint")
+
+    assert result_path.read_text(encoding="utf-8") == (
+        "macro_f1: 0.750000\n"
+        "model_name: test-checkpoint\n"
+        "dataset_identifier: stanfordnlp/sst2\n"
+        "label_mapping: 0=negative, 1=positive\n"
+        "test_size: 0.2\n"
+        "random_state: 42\n"
+    )

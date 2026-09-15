@@ -152,11 +152,11 @@ Work on one item per request. For each item, read its matching `tasks/dayN.md` s
 
 ### D4-05 — Held-out evaluation and result record
 
-- [ ] Predict once on `X_test` with the fitted baseline classifier.
-- [ ] Produce `classification_report(y_test, y_pred)` and calculate
+- [x] Implement prediction on `X_test` with the fitted baseline classifier.
+- [x] Implement `classification_report(y_test, y_pred)` and calculate
   `f1_score(y_test, y_pred, average="macro")`; include per-class support in the
   reported output.
-- [ ] Save only macro F1 and minimal run context (checkpoint, dataset ID,
+- [x] Save only macro F1 and minimal run context (checkpoint, dataset ID,
   label mapping, and split parameters) to ignored `baseline_results.txt`.
 - **Done when:** macro F1 is reported strictly for the held-out set and is not
   used to choose settings in this baseline run.
