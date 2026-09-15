@@ -98,9 +98,35 @@ Work on one item per request. For each item, read its matching `tasks/dayN.md` s
 - **Done when:** the Day 3 checkpoint in `tasks/day3.md` is satisfied without introducing classification work.
 - **Verify:** run focused offline checks plus a separate real-model visualization smoke check.
 
+## Day 4 — Frozen-embedding classification baseline
+
+### D4-01 — SST-2 selection and dataset contract
+
+- [x] Select `stanfordnlp/sst2`; document its source, binary label mapping,
+  labelled split sizes/class counts, and the source's `unknown` license status.
+- [x] Adapt a labelled SST-2 table from `sentence,label` to the project-wide
+  `text,label` contract and validate text, labels, and the presence of both
+  classes without downloading or committing the dataset.
+- **Done when:** a validated local table has non-empty `text` values and both
+  `0 = negative` and `1 = positive` labels.
+- **Verify:** fast offline tests cover the metadata, source-column conversion,
+  defensive copying, and invalid/missing labels.
+
+### D4-02 — Frozen embedding dataset
+
+- [x] Combine a validated `text,label` table with the existing `get_embeddings`
+  utility to produce aligned features `[n_samples, hidden_size]` and labels
+  `[n_samples]`.
+- [x] Validate model-output rank, alignment, feature width, and finiteness at
+  the project boundary.
+- **Done when:** each feature row corresponds to its original text and label;
+  no classifier is fitted and no label influences embedding values.
+- **Verify:** offline tests mock the embedding extractor and cover row order,
+  batch-size forwarding, validation before model calls, and malformed outputs.
+
 ## Later backlog — detail only when reached
 
-- [ ] **Day 4:** build a frozen-embedding classification baseline.
+- [ ] **Day 4:** extract frozen embeddings, create the one held-out split, and train/evaluate Logistic Regression.
 - [ ] **Day 5:** fine-tune a sequence classifier.
 - [ ] **Day 6:** compare both approaches on the same held-out data.
 - [ ] **Day 7:** analyze errors and build a small demo.
