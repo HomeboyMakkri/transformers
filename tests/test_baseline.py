@@ -32,11 +32,13 @@ def test_prepare_frozen_embedding_dataset_preserves_text_label_alignment(
         tokenizer: PreTrainedTokenizerBase,
         model: PreTrainedModel,
         batch_size: int = 32,
+        progress_callback: object = None,
     ) -> npt.NDArray[np.floating[Any]]:
         received["texts"] = texts
         received["tokenizer"] = tokenizer
         received["model"] = model
         received["batch_size"] = batch_size
+        received["progress_callback"] = progress_callback
         return np.array([[30.0, 3.0], [10.0, 1.0], [20.0, 2.0]])
 
     monkeypatch.setattr(baseline, "get_embeddings", fake_get_embeddings)
@@ -55,6 +57,7 @@ def test_prepare_frozen_embedding_dataset_preserves_text_label_alignment(
         "tokenizer": tokenizer,
         "model": model,
         "batch_size": 2,
+        "progress_callback": None,
     }
     assert prepared.features.tolist() == [[30.0, 3.0], [10.0, 1.0], [20.0, 2.0]]
     assert prepared.labels.tolist() == [1, 0, 1]

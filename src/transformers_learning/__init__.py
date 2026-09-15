@@ -25,6 +25,7 @@ from .datasets import (
     validate_sentiment_dataframe,
 )
 from .modeling import (
+    ProgressCallback,
     extract_first_token_representation,
     get_embeddings,
     load_model,
@@ -44,6 +45,7 @@ from .tokenization import (
 __all__ = [
     "DEFAULT_MODEL_NAME",
     "LABEL_COLUMN",
+    "ProgressCallback",
     "SST2_LABEL_MAP",
     "SST2_METADATA",
     "TEXT_COLUMN",

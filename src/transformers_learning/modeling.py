@@ -1,6 +1,6 @@
 """Model loading and inference utilities for the learning project."""
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any, cast
 
 import numpy as np
@@ -11,6 +11,8 @@ from transformers import AutoModel, PreTrainedModel, PreTrainedTokenizerBase
 from transformers.modeling_outputs import BaseModelOutput
 
 from .tokenization import DEFAULT_MODEL_NAME, tokenize_texts
+
+ProgressCallback = Callable[[int, int], None]
 
 
 def load_model(
@@ -47,8 +49,13 @@ def get_embeddings(
     tokenizer: PreTrainedTokenizerBase,
     model: PreTrainedModel,
     batch_size: int = 32,
+    progress_callback: ProgressCallback | None = None,
 ) -> npt.NDArray[np.floating[Any]]:
-    """Return first-token representations in input order using small batches."""
+    """Return first-token representations in input order using small batches.
+
+    When supplied, ``progress_callback`` receives completed and total text
+    counts after every completed batch.
+    """
 
     if not texts:
         raise ValueError("texts must contain at least one item")
@@ -72,6 +79,8 @@ def get_embeddings(
 
         first_token = extract_first_token_representation(outputs.last_hidden_state)
         all_embeddings.append(first_token.cpu().numpy())
+        if progress_callback is not None:
+            progress_callback(start + len(batch_texts), len(texts))
 
     return np.vstack(all_embeddings)
 

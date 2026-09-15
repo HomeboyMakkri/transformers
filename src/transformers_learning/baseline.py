@@ -19,7 +19,7 @@ from .datasets import (
     TEXT_COLUMN,
     validate_sentiment_dataframe,
 )
-from .modeling import get_embeddings
+from .modeling import ProgressCallback, get_embeddings
 from .tokenization import DEFAULT_MODEL_NAME
 
 TEST_SIZE = 0.2
@@ -58,6 +58,7 @@ def prepare_frozen_embedding_dataset(
     tokenizer: PreTrainedTokenizerBase,
     model: PreTrainedModel,
     batch_size: int = 32,
+    progress_callback: ProgressCallback | None = None,
 ) -> FrozenEmbeddingDataset:
     """Extract one frozen first-token feature vector for each labelled text.
 
@@ -69,7 +70,13 @@ def prepare_frozen_embedding_dataset(
     validated = validate_sentiment_dataframe(dataframe)
     texts = tuple(str(text) for text in validated[TEXT_COLUMN])
     labels = np.asarray(validated[LABEL_COLUMN].to_numpy(), dtype=np.int64)
-    features = get_embeddings(texts, tokenizer, model, batch_size=batch_size)
+    features = get_embeddings(
+        texts,
+        tokenizer,
+        model,
+        batch_size=batch_size,
+        progress_callback=progress_callback,
+    )
 
     dataset = FrozenEmbeddingDataset(features=features, labels=labels)
     _validate_frozen_embedding_dataset(dataset)

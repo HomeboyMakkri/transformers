@@ -183,6 +183,23 @@ def test_get_embeddings_preserves_order_and_processes_partial_final_batch() -> N
     assert model.training is False
 
 
+def test_get_embeddings_reports_completed_texts_after_each_batch() -> None:
+    tokenizer, _, model, _ = make_embedding_dependencies()
+    progress_events: list[tuple[int, int]] = []
+
+    get_embeddings(
+        ("Text A", "Text B", "Text C", "Text D", "Text E"),
+        tokenizer,
+        model,
+        batch_size=2,
+        progress_callback=lambda completed, total: progress_events.append(
+            (completed, total)
+        ),
+    )
+
+    assert progress_events == [(2, 5), (4, 5), (5, 5)]
+
+
 @pytest.mark.parametrize(
     ("texts", "batch_size", "message"),
     (
