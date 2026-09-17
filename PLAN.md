@@ -196,10 +196,11 @@ Work on one item per request. For each item, read its matching `tasks/dayN.md` s
 
 ### D5-02 — Tokenized PyTorch Dataset
 
-- [ ] Implement a typed `SentimentDataset` over validated text/label rows,
+- [x] **Status: complete.**
+- [x] Implement a typed `SentimentDataset` over validated text/label rows,
   reusing the Day 1 tokenizer with `max_length=128`, truncation, and
   `padding="max_length"`.
-- [ ] Return one item with `input_ids: [max_length]`,
+- [x] Return one item with `input_ids: [max_length]`,
   `attention_mask: [max_length]`, and a scalar `torch.long` label; do not leave
   the tokenizer's temporary batch dimension on individual items.
 - **Done when:** dataset length matches its aligned inputs and a `DataLoader`

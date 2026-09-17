@@ -24,6 +24,11 @@ from .datasets import (
     get_class_counts,
     validate_sentiment_dataframe,
 )
+from .fine_tuning import (
+    DEFAULT_MAX_LENGTH,
+    SentimentDataset,
+    SentimentDatasetItem,
+)
 from .modeling import (
     ProgressCallback,
     extract_first_token_representation,
@@ -53,6 +58,7 @@ from .tokenization import (
 )
 
 __all__ = [
+    "DEFAULT_MAX_LENGTH",
     "DEFAULT_MODEL_NAME",
     "INNER_VALIDATION_SIZE",
     "LABEL_COLUMN",
@@ -67,6 +73,8 @@ __all__ = [
     "OuterSentimentSplit",
     "ProgressCallback",
     "SST2DownloadError",
+    "SentimentDataset",
+    "SentimentDatasetItem",
     "SentimentDatasetMetadata",
     "SentimentDatasetValidationError",
     "SentimentRowSplit",
