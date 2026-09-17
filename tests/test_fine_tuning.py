@@ -1,12 +1,21 @@
+from types import SimpleNamespace
 from typing import cast
 
 import pytest
 import torch
-from torch.utils.data import DataLoader
-from transformers import BatchEncoding, PreTrainedTokenizerBase
+from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
+from transformers import BatchEncoding, PreTrainedModel, PreTrainedTokenizerBase
 
+from transformers_learning import fine_tuning
 from transformers_learning.datasets import SentimentDatasetValidationError
-from transformers_learning.fine_tuning import SentimentDataset
+from transformers_learning.fine_tuning import (
+    DEFAULT_BATCH_SIZE,
+    NUM_SENTIMENT_LABELS,
+    SentimentDataset,
+    create_sentiment_dataloaders,
+    load_sequence_classifier,
+    select_training_device,
+)
 
 
 class FakeSentimentTokenizer:
@@ -126,3 +135,116 @@ def test_sentiment_dataset_rejects_malformed_tokenizer_shape() -> None:
 
     with pytest.raises(ValueError, match=r"input_ids.*\[1, max_length\]"):
         dataset[0]
+
+
+def test_create_sentiment_dataloaders_shuffles_only_training_data() -> None:
+    tokenizer, _ = make_fake_tokenizer()
+    train_dataset = SentimentDataset(
+        ["Good movie", "Bad movie"], [1, 0], tokenizer, max_length=4
+    )
+    validation_dataset = SentimentDataset(
+        ["Bad movie", "Good movie"], [0, 1], tokenizer, max_length=4
+    )
+
+    loaders = create_sentiment_dataloaders(train_dataset, validation_dataset)
+
+    assert loaders.train.dataset is train_dataset
+    assert loaders.validation.dataset is validation_dataset
+    assert loaders.train.batch_size == DEFAULT_BATCH_SIZE == 16
+    assert loaders.validation.batch_size == DEFAULT_BATCH_SIZE
+    assert isinstance(loaders.train.sampler, RandomSampler)
+    assert isinstance(loaders.validation.sampler, SequentialSampler)
+    assert next(iter(loaders.validation))["labels"].tolist() == [0, 1]
+
+
+@pytest.mark.parametrize("batch_size", (0, -1))
+def test_create_sentiment_dataloaders_rejects_non_positive_batch_size(
+    batch_size: int,
+) -> None:
+    tokenizer, _ = make_fake_tokenizer()
+    dataset = SentimentDataset(
+        ["Good movie", "Bad movie"], [1, 0], tokenizer, max_length=4
+    )
+
+    with pytest.raises(ValueError, match="positive"):
+        create_sentiment_dataloaders(dataset, dataset, batch_size=batch_size)
+
+
+def test_select_training_device_prefers_cuda_when_available(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+
+    assert select_training_device() == torch.device("cuda")
+
+
+def test_select_training_device_falls_back_to_cpu(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+
+    assert select_training_device() == torch.device("cpu")
+
+
+def test_load_sequence_classifier_uses_binary_head_and_moves_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    received: dict[str, object] = {}
+
+    class FakeSequenceClassifier:
+        def to(self, device: torch.device) -> "FakeSequenceClassifier":
+            received["device"] = device
+            return self
+
+        def __call__(
+            self,
+            *,
+            input_ids: torch.Tensor,
+            attention_mask: torch.Tensor,
+        ) -> SimpleNamespace:
+            assert input_ids.shape == attention_mask.shape
+            return SimpleNamespace(
+                logits=torch.zeros((input_ids.shape[0], NUM_SENTIMENT_LABELS))
+            )
+
+    fake_model = FakeSequenceClassifier()
+
+    class FakeAutoModelForSequenceClassification:
+        @staticmethod
+        def from_pretrained(model_name: str, **options: object) -> PreTrainedModel:
+            received["model_name"] = model_name
+            received["options"] = options
+            return cast(PreTrainedModel, fake_model)
+
+    monkeypatch.setattr(
+        fine_tuning,
+        "AutoModelForSequenceClassification",
+        FakeAutoModelForSequenceClassification,
+    )
+    tokenizer, _ = make_fake_tokenizer()
+    dataset = SentimentDataset(
+        ["Good movie", "Bad movie"], [1, 0], tokenizer, max_length=4
+    )
+    batch = next(
+        iter(
+            create_sentiment_dataloaders(
+                dataset, dataset, batch_size=2
+            ).validation
+        )
+    )
+
+    setup = load_sequence_classifier("test-checkpoint", device=torch.device("cpu"))
+    outputs = fake_model(
+        input_ids=batch["input_ids"],
+        attention_mask=batch["attention_mask"],
+    )
+
+    assert setup.model is fake_model
+    assert setup.device == torch.device("cpu")
+    assert received == {
+        "model_name": "test-checkpoint",
+        "options": {"num_labels": 2},
+        "device": torch.device("cpu"),
+    }
+    assert batch["input_ids"].shape == (2, 4)
+    assert outputs.logits.shape == (2, 2)

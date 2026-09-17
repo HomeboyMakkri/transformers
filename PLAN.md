@@ -210,10 +210,11 @@ Work on one item per request. For each item, read its matching `tasks/dayN.md` s
 
 ### D5-03 — Classification model and DataLoaders
 
-- [ ] Load `AutoModelForSequenceClassification` from
+- [x] **Status: complete.**
+- [x] Load `AutoModelForSequenceClassification` from
   `distilbert-base-uncased` with `num_labels=2` and create train/validation
   `DataLoader` objects with `batch_size=16`.
-- [ ] Shuffle only the training loader; select CUDA when available and
+- [x] Shuffle only the training loader; select CUDA when available and
   otherwise use CPU, then move the model to that device.
 - **Done when:** one batch produces logits `[batch, 2]` from input tensors
   `[batch, max_length]` without using outer-test rows.
