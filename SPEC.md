@@ -6,7 +6,7 @@ Build a seven-day sentiment-analysis project while understanding tokenization, h
 
 ## Current scope
 
-Days 1–4 are specified below. Days 5–7 remain high-level until their
+Days 1–5 are specified below. Days 6–7 remain high-level until their
 requirements are discussed; later-day code is out of scope for now.
 
 ## Accepted decisions
@@ -88,10 +88,91 @@ requirements are discussed; later-day code is out of scope for now.
   dataset identifier, and label mapping) to the ignored `baseline_results.txt`.
   Do not persist model weights or use this file as an experiment tracker.
 
+## Day 5 contract: fine-tuned sequence classifier
+
+### Data boundaries
+
+- Reuse the validated SST-2 `text,label` rows and binary mapping from Day 4.
+  Day 5 must reproduce the same stratified outer 80/20 partition, with
+  `random_state=42`, from the same source-row order. Its outer test row
+  identities must therefore match the baseline holdout used for the Day 6
+  comparison.
+- Do not use the outer test partition during Day 5. Split only the outer
+  training rows into train and validation partitions with `test_size=0.2`,
+  `random_state=42`, and stratification. Validation may monitor the fixed run;
+  the outer test set remains reserved for Day 6.
+- Preserve row identity through both splits so tests can prove full coverage,
+  disjoint partitions, and exact holdout agreement. No text or label may be
+  silently dropped, duplicated, or reordered across its paired fields.
+
+### Dataset, tokenization, and batches
+
+- Provide a typed PyTorch `SentimentDataset` using the shared
+  `distilbert-base-uncased` tokenizer. Tokenize lazily per item with
+  `max_length=128`, truncation, `padding="max_length"`, and PyTorch tensors.
+- One dataset item has `input_ids: [max_length]`,
+  `attention_mask: [max_length]`, and one scalar `torch.long` label. A loader
+  batch has `input_ids: [batch, max_length]`,
+  `attention_mask: [batch, max_length]`, and `labels: [batch]`.
+- Use `batch_size=16`; shuffle the training loader only. The validation loader
+  must preserve deterministic order, and outer-test rows must not be accepted
+  by the Day 5 loader-building path.
+
+### Model and optimization
+
+- Load `AutoModelForSequenceClassification` from the shared checkpoint with
+  `num_labels=2`. Its classification head maps contextual representations to
+  logits `[batch, 2]`; these logits are unnormalized class scores, not
+  probabilities. With labels `[batch]`, the model also returns one scalar
+  classification loss.
+- Select CUDA when available and otherwise CPU. Move the model and every input
+  tensor to the same device. Use
+  `torch.optim.AdamW(model.parameters(), lr=2e-5)`; do not import the obsolete
+  `AdamW` re-export shown in the original assignment.
+- Fine-tuning updates the Transformer and classification-head parameters.
+  `model.train()` enables training behavior, while gradients and optimizer
+  steps perform learning; these are separate responsibilities.
+
+### Training and validation
+
+- `train_epoch` must set training mode and, for every batch, clear old
+  gradients, perform the labelled forward pass, backpropagate the scalar loss,
+  and take one optimizer step. Return finite mean loss per processed batch and
+  reject an empty loader rather than divide by zero.
+- Evaluation must set `model.eval()` and disable gradient recording. It must
+  not call backward or the optimizer. Convert logits `[batch, 2]` to predicted
+  labels `[batch]` using `argmax(dim=1)`, then calculate accuracy and macro F1
+  over the complete validation partition.
+- Run a fixed three epochs. Record train loss, validation accuracy, and
+  validation macro F1 after each epoch. Day 5 has no early stopping,
+  hyperparameter search, or outer-test evaluation; the saved model is the
+  final state after epoch 3.
+- Validation macro F1 weights negative and positive classes equally and is the
+  main monitoring metric. Accuracy remains a secondary metric and may hide
+  unequal class behavior; neither validation metric is the final Day 6
+  held-out result.
+
+### Artifacts, notebook, and verification
+
+- Save the final model and tokenizer to ignored `fine_tuned_model/`. Save the
+  epoch-3 validation metrics and minimal reproducibility context to ignored
+  `fine_tuned_results.txt`: checkpoint, dataset ID, label mapping, outer and
+  inner split parameters, epochs, batch size, maximum length, learning rate,
+  and device.
+- Keep reusable partitioning, dataset, training, evaluation, and persistence
+  logic in `src/transformers_learning/`. The Day 5 notebook contains only
+  explanations, small inspections, and calls to that logic.
+- Fast offline tests should use fake tokenizers, models, loaders, and temporary
+  paths to verify project behavior. Loading the real checkpoint and the full
+  three-epoch run are separate integration checks requiring explicit warning
+  about downloads, runtime, and compute resources.
+
 ## Project invariants
 
 - Keep examples small before running full datasets or training.
 - Make tensor shapes and device movement observable at important boundaries.
 - Cover reusable preprocessing and embedding logic with fast offline tests; keep real-model checks separate.
-- From Day 4 onward, use one reproducible data split and keep the final test set out of model selection.
+- From Day 4 onward, use one reproducible outer data split and keep the final
+  test set out of model selection. Any validation split must come only from
+  the outer training rows.
 - Compare models on the same examples, split, labels, and metrics.

@@ -9,7 +9,6 @@ import numpy.typing as npt
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import classification_report, f1_score
-from sklearn.model_selection import train_test_split
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
 
 from .datasets import (
@@ -20,10 +19,15 @@ from .datasets import (
     validate_sentiment_dataframe,
 )
 from .modeling import ProgressCallback, get_embeddings
+from .splitting import (
+    OUTER_TEST_SIZE,
+    SPLIT_RANDOM_STATE,
+    split_outer_sentiment_indices,
+)
 from .tokenization import DEFAULT_MODEL_NAME
 
-TEST_SIZE = 0.2
-RANDOM_STATE = 42
+TEST_SIZE = OUTER_TEST_SIZE
+RANDOM_STATE = SPLIT_RANDOM_STATE
 
 
 @dataclass(frozen=True)
@@ -94,18 +98,12 @@ def split_frozen_embedding_dataset(
     """
 
     _validate_frozen_embedding_dataset(dataset)
-    X_train, X_test, y_train, y_test = train_test_split(
-        dataset.features,
-        dataset.labels,
-        test_size=TEST_SIZE,
-        random_state=RANDOM_STATE,
-        stratify=dataset.labels,
-    )
+    row_split = split_outer_sentiment_indices(dataset.labels)
     return FrozenEmbeddingSplit(
-        X_train=cast(npt.NDArray[np.floating[Any]], X_train),
-        X_test=cast(npt.NDArray[np.floating[Any]], X_test),
-        y_train=cast(npt.NDArray[np.int64], y_train),
-        y_test=cast(npt.NDArray[np.int64], y_test),
+        X_train=dataset.features[row_split.train_indices],
+        X_test=dataset.features[row_split.test_indices],
+        y_train=dataset.labels[row_split.train_indices],
+        y_test=dataset.labels[row_split.test_indices],
     )
 
 

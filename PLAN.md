@@ -177,8 +177,115 @@ Work on one item per request. For each item, read its matching `tasks/dayN.md` s
 - **Verify:** run the notebook only after explicitly allowing the model/data
   download; keep generated results and caches out of Git.
 
+## Day 5 — Fine-tuned sequence classifier
+
+### D5-01 — Shared holdout and training/validation partitions
+
+- [x] **Status: complete.**
+- [x] Reuse the Day 4 source rows, label mapping, and deterministic stratified
+  80/20 outer split so the fine-tuned model and frozen baseline have exactly
+  the same final held-out examples.
+- [x] Split only the outer training rows again into training and validation
+  partitions with `test_size=0.2`, `random_state=42`, and stratification. The
+  outer test rows remain unavailable to the Day 5 training loop and metrics.
+- **Done when:** every source row belongs to exactly one of train, validation,
+  or test; both labels occur in every partition; the test row identities match
+  Day 4 and cannot be passed to Day 5 training or validation code.
+- **Verify:** fast offline tests check determinism, class preservation, no row
+  overlap, full row coverage, and exact agreement with the Day 4 holdout.
+
+### D5-02 — Tokenized PyTorch Dataset
+
+- [ ] Implement a typed `SentimentDataset` over validated text/label rows,
+  reusing the Day 1 tokenizer with `max_length=128`, truncation, and
+  `padding="max_length"`.
+- [ ] Return one item with `input_ids: [max_length]`,
+  `attention_mask: [max_length]`, and a scalar `torch.long` label; do not leave
+  the tokenizer's temporary batch dimension on individual items.
+- **Done when:** dataset length matches its aligned inputs and a `DataLoader`
+  batch has inputs `[batch, max_length]` and labels `[batch]`.
+- **Verify:** offline tests use a fake tokenizer to cover alignment, dtypes,
+  shapes, truncation arguments, empty/mismatched inputs, and invalid labels.
+
+### D5-03 — Classification model and DataLoaders
+
+- [ ] Load `AutoModelForSequenceClassification` from
+  `distilbert-base-uncased` with `num_labels=2` and create train/validation
+  `DataLoader` objects with `batch_size=16`.
+- [ ] Shuffle only the training loader; select CUDA when available and
+  otherwise use CPU, then move the model to that device.
+- **Done when:** one batch produces logits `[batch, 2]` from input tensors
+  `[batch, max_length]` without using outer-test rows.
+- **Verify:** test loader configuration and boundaries offline; keep the real
+  checkpoint/device forward pass as a separate integration smoke check.
+
+### D5-04 — One training epoch
+
+- [ ] Implement `train_epoch` with `model.train()`, device transfer,
+  `optimizer.zero_grad()`, forward pass with labels, scalar cross-entropy loss,
+  `loss.backward()`, and `optimizer.step()` for every batch.
+- [ ] Use `torch.optim.AdamW(model.parameters(), lr=2e-5)` and report mean loss
+  per processed batch.
+- **Done when:** gradients update model parameters only during training and the
+  returned epoch loss is finite and non-negative.
+- **Verify:** focused tests check mode selection, batch/device forwarding,
+  optimizer call order, averaging, and the empty-loader policy without
+  training a pretrained model.
+
+### D5-05 — Validation evaluation
+
+- [ ] Implement evaluation with `model.eval()` and a no-gradient context;
+  convert logits `[batch, 2]` to predictions `[batch]` with `argmax(dim=1)`.
+- [ ] Report validation accuracy and macro F1 with explicit binary label
+  handling; keep predictions aligned with their labels.
+- **Done when:** evaluation cannot create gradients or update parameters, and
+  both metrics are finite values in `[0, 1]` calculated only from validation
+  rows.
+- **Verify:** offline tests cover mode/gradient boundaries, concatenation over
+  multiple batches, prediction order, metric values, and malformed outputs.
+
+### D5-06 — Fixed three-epoch fine-tuning run
+
+- [ ] Run exactly three epochs, calling `train_epoch` and validation evaluation
+  once per epoch; record train loss, validation accuracy, and validation macro
+  F1 for every epoch.
+- [ ] Treat validation metrics as monitoring information for this fixed run;
+  do not inspect the outer test set, tune hyperparameters, or add early
+  stopping in Day 5.
+- **Done when:** the run produces three ordered metric records and leaves the
+  final model in a clearly documented state after epoch 3.
+- **Verify:** unit-test orchestration with small fakes; run full fine-tuning
+  only after warning about runtime, memory use, and model/data access.
+
+### D5-07 — Save model and validation results
+
+- [ ] Save the final model and tokenizer with `save_pretrained` under ignored
+  `fine_tuned_model/` and write the epoch-3 validation metrics plus minimal run
+  context to ignored `fine_tuned_results.txt`.
+- [ ] Record checkpoint, dataset ID, label mapping, outer and inner split
+  parameters, epochs, batch size, maximum length, learning rate, and device;
+  do not label validation metrics as final held-out test results.
+- **Done when:** the local artifact can be reloaded with its tokenizer and the
+  result file is sufficient to identify the fixed Day 5 run.
+- **Verify:** use temporary directories for save/load and result-format tests;
+  keep generated weights and result files out of Git.
+
+### D5-08 — Day 5 notebook walkthrough and review
+
+- [ ] Add a thin notebook that calls reusable `src/` functions, displays one
+  sample and one batch shape, then launches the explicitly approved training
+  run and records its per-epoch validation history.
+- [ ] Explain fine-tuning versus frozen embeddings, `train()` versus `eval()`,
+  enabled versus disabled gradients, and why validation and outer test data
+  have different roles.
+- **Done when:** the `tasks/day5.md` checkpoint is satisfied and the complete
+  path from text to saved classifier can be explained without reusable logic
+  living in notebook cells.
+- **Verify:** run offline tests, Ruff, Pyright, and `git diff --check`; execute
+  the real notebook separately because it may require downloads and a long
+  CPU/GPU training run.
+
 ## Later backlog — detail only when reached
 
-- [ ] **Day 5:** fine-tune a sequence classifier.
 - [ ] **Day 6:** compare both approaches on the same held-out data.
 - [ ] **Day 7:** analyze errors and build a small demo.
