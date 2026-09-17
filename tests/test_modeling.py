@@ -1,6 +1,9 @@
 import math
-from typing import cast
+from collections.abc import Sequence
+from typing import Any, cast
 
+import numpy as np
+import numpy.typing as npt
 import pytest
 import torch
 from transformers import (
@@ -11,6 +14,7 @@ from transformers import (
 )
 from transformers.modeling_outputs import BaseModelOutput
 
+from transformers_learning import modeling
 from transformers_learning.modeling import (
     extract_first_token_representation,
     get_embeddings,
@@ -181,6 +185,30 @@ def test_get_embeddings_preserves_order_and_processes_partial_final_batch() -> N
     assert embeddings[:, 0].tolist() == [30.0, 10.0, 20.0, 40.0, 50.0]
     assert fake_model.grad_modes == [False, False, False]
     assert model.training is False
+
+
+def test_get_embeddings_compacts_first_token_views_before_accumulating(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tokenizer, _, model, _ = make_embedding_dependencies()
+    original_vstack = np.vstack
+
+    def checked_vstack(
+        arrays: Sequence[npt.NDArray[np.floating[Any]]],
+    ) -> npt.NDArray[np.floating[Any]]:
+        assert all(array.flags.c_contiguous for array in arrays)
+        return cast(npt.NDArray[np.floating[Any]], original_vstack(arrays))
+
+    monkeypatch.setattr(modeling.np, "vstack", checked_vstack)
+
+    embeddings = get_embeddings(
+        ("Text A", "Text B", "Text C", "Text D"),
+        tokenizer,
+        model,
+        batch_size=2,
+    )
+
+    assert embeddings.shape == (4, 3)
 
 
 def test_get_embeddings_reports_completed_texts_after_each_batch() -> None:

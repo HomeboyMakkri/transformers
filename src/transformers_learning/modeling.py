@@ -78,7 +78,8 @@ def get_embeddings(
             raise RuntimeError("model output does not contain last_hidden_state")
 
         first_token = extract_first_token_representation(outputs.last_hidden_state)
-        all_embeddings.append(first_token.cpu().numpy())
+        compact_first_token = first_token.detach().contiguous().cpu()
+        all_embeddings.append(compact_first_token.numpy())
         if progress_callback is not None:
             progress_callback(start + len(batch_texts), len(texts))
 
