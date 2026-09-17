@@ -1,3 +1,4 @@
+from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 
@@ -24,6 +25,7 @@ from transformers_learning.fine_tuning import (
     evaluate_sequence_classifier,
     load_sequence_classifier,
     run_fine_tuning,
+    save_fine_tuning_artifacts,
     select_training_device,
     train_epoch,
 )
@@ -595,3 +597,97 @@ def test_run_fine_tuning_records_exactly_three_ordered_epochs(
         FineTuningEpochMetrics(3, 0.4, 0.8, 0.75),
     )
     assert model.training is False
+
+
+def make_completed_fine_tuning_history() -> tuple[FineTuningEpochMetrics, ...]:
+    return (
+        FineTuningEpochMetrics(1, 0.9, 0.70, 0.65),
+        FineTuningEpochMetrics(2, 0.6, 0.75, 0.70),
+        FineTuningEpochMetrics(3, 0.4, 0.80, 0.77),
+    )
+
+
+def test_save_fine_tuning_artifacts_can_be_reloaded_and_records_context(
+    tmp_path: Path,
+) -> None:
+    class FakeSavableModel:
+        def save_pretrained(self, directory: Path) -> None:
+            directory.mkdir(parents=True, exist_ok=True)
+            (directory / "model.marker").write_text("model", encoding="utf-8")
+
+        @classmethod
+        def from_pretrained(cls, directory: Path) -> "FakeSavableModel":
+            assert (directory / "model.marker").read_text(encoding="utf-8") == "model"
+            return cls()
+
+    class FakeSavableTokenizer:
+        def save_pretrained(self, directory: Path) -> None:
+            directory.mkdir(parents=True, exist_ok=True)
+            (directory / "tokenizer.marker").write_text(
+                "tokenizer", encoding="utf-8"
+            )
+
+        @classmethod
+        def from_pretrained(cls, directory: Path) -> "FakeSavableTokenizer":
+            assert (
+                directory / "tokenizer.marker"
+            ).read_text(encoding="utf-8") == "tokenizer"
+            return cls()
+
+    model_directory = tmp_path / "fine_tuned_model"
+    results_path = tmp_path / "results" / "fine_tuned_results.txt"
+
+    save_fine_tuning_artifacts(
+        cast(PreTrainedModel, FakeSavableModel()),
+        cast(PreTrainedTokenizerBase, FakeSavableTokenizer()),
+        make_completed_fine_tuning_history(),
+        device=torch.device("cpu"),
+        model_directory=model_directory,
+        results_path=results_path,
+        model_name="test-checkpoint",
+        dataset_identifier="test-dataset",
+    )
+
+    assert isinstance(
+        FakeSavableModel.from_pretrained(model_directory), FakeSavableModel
+    )
+    assert isinstance(
+        FakeSavableTokenizer.from_pretrained(model_directory), FakeSavableTokenizer
+    )
+    assert results_path.read_text(encoding="utf-8") == (
+        "validation_accuracy: 0.800000\n"
+        "validation_macro_f1: 0.770000\n"
+        "final_epoch: 3\n"
+        "model_name: test-checkpoint\n"
+        "dataset_identifier: test-dataset\n"
+        "label_mapping: 0=negative, 1=positive\n"
+        "outer_test_size: 0.2\n"
+        "inner_validation_size: 0.2\n"
+        "random_state: 42\n"
+        "epochs: 3\n"
+        "batch_size: 16\n"
+        "max_length: 128\n"
+        "learning_rate: 2e-05\n"
+        "device: cpu\n"
+    )
+
+
+def test_save_fine_tuning_artifacts_validates_history_before_writing(
+    tmp_path: Path,
+) -> None:
+    class MustNotSave:
+        def save_pretrained(self, directory: Path) -> None:
+            raise AssertionError("Invalid history must be rejected before saving")
+
+    with pytest.raises(ValueError, match="exactly three epochs"):
+        save_fine_tuning_artifacts(
+            cast(PreTrainedModel, MustNotSave()),
+            cast(PreTrainedTokenizerBase, MustNotSave()),
+            make_completed_fine_tuning_history()[:2],
+            device=torch.device("cpu"),
+            model_directory=tmp_path / "model",
+            results_path=tmp_path / "results.txt",
+        )
+
+    assert not (tmp_path / "model").exists()
+    assert not (tmp_path / "results.txt").exists()

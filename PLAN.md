@@ -141,7 +141,8 @@ Work on one item per request. For each item, read its matching `tasks/dayN.md` s
 
 ### D4-04 — Logistic Regression training
 
-- [x] **Status: complete.**
+- [x] **Status: implementation complete; real artifacts require the separate
+  approved three-epoch training run.**
 - [x] Construct `LogisticRegression(max_iter=1000, n_jobs=-1)`.
 - [x] Fit it only on `X_train, y_train`; do not pass `X_test` or `y_test` to
   `fit`, parameter selection, or preprocessing.
@@ -264,10 +265,11 @@ Work on one item per request. For each item, read its matching `tasks/dayN.md` s
 
 ### D5-07 — Save model and validation results
 
-- [ ] Save the final model and tokenizer with `save_pretrained` under ignored
+- [x] **Status: complete.**
+- [x] Save the final model and tokenizer with `save_pretrained` under ignored
   `fine_tuned_model/` and write the epoch-3 validation metrics plus minimal run
   context to ignored `fine_tuned_results.txt`.
-- [ ] Record checkpoint, dataset ID, label mapping, outer and inner split
+- [x] Record checkpoint, dataset ID, label mapping, outer and inner split
   parameters, epochs, batch size, maximum length, learning rate, and device;
   do not label validation metrics as final held-out test results.
 - **Done when:** the local artifact can be reloaded with its tokenizer and the

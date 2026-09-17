@@ -3,6 +3,7 @@
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, TypedDict, cast
 
 import numpy as np
@@ -19,10 +20,23 @@ from transformers import (
 )
 from transformers.modeling_outputs import SequenceClassifierOutput
 
-from .datasets import LABEL_COLUMN, TEXT_COLUMN, validate_sentiment_dataframe
+from .datasets import (
+    LABEL_COLUMN,
+    SST2_LABEL_MAP,
+    SST2_METADATA,
+    TEXT_COLUMN,
+    validate_sentiment_dataframe,
+)
+from .splitting import (
+    INNER_VALIDATION_SIZE,
+    OUTER_TEST_SIZE,
+    SPLIT_RANDOM_STATE,
+)
 from .tokenization import DEFAULT_MODEL_NAME
 
 DEFAULT_BATCH_SIZE = 16
+DEFAULT_FINE_TUNED_MODEL_DIRECTORY = Path("fine_tuned_model")
+DEFAULT_FINE_TUNED_RESULTS_PATH = Path("fine_tuned_results.txt")
 DEFAULT_LEARNING_RATE = 2e-5
 DEFAULT_MAX_LENGTH = 128
 DEFAULT_NUM_EPOCHS = 3
@@ -329,6 +343,97 @@ def run_fine_tuning(
             )
         )
     return tuple(history)
+
+
+def save_fine_tuning_artifacts(
+    model: PreTrainedModel,
+    tokenizer: PreTrainedTokenizerBase,
+    history: Sequence[FineTuningEpochMetrics],
+    *,
+    device: torch.device,
+    model_directory: Path = DEFAULT_FINE_TUNED_MODEL_DIRECTORY,
+    results_path: Path = DEFAULT_FINE_TUNED_RESULTS_PATH,
+    model_name: str = DEFAULT_MODEL_NAME,
+    dataset_identifier: str = SST2_METADATA.identifier,
+    batch_size: int = DEFAULT_BATCH_SIZE,
+    max_length: int = DEFAULT_MAX_LENGTH,
+    learning_rate: float = DEFAULT_LEARNING_RATE,
+) -> None:
+    """Save epoch-3 artifacts and explicitly labelled validation metrics."""
+
+    final_metrics = _validate_fine_tuning_history(history)
+    if isinstance(batch_size, bool) or not isinstance(batch_size, int):
+        raise TypeError("batch_size must be an integer")
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+    if isinstance(max_length, bool) or not isinstance(max_length, int):
+        raise TypeError("max_length must be an integer")
+    if max_length <= 0:
+        raise ValueError("max_length must be positive")
+    if not math.isfinite(learning_rate) or learning_rate <= 0.0:
+        raise ValueError("learning_rate must be finite and positive")
+
+    model_directory.mkdir(parents=True, exist_ok=True)
+    model.save_pretrained(model_directory)
+    tokenizer.save_pretrained(model_directory)
+
+    results_path.parent.mkdir(parents=True, exist_ok=True)
+    label_mapping = ", ".join(
+        f"{label}={name}" for label, name in SST2_LABEL_MAP.items()
+    )
+    results_path.write_text(
+        "\n".join(
+            (
+                f"validation_accuracy: {final_metrics.validation_accuracy:.6f}",
+                f"validation_macro_f1: {final_metrics.validation_macro_f1:.6f}",
+                f"final_epoch: {final_metrics.epoch}",
+                f"model_name: {model_name}",
+                f"dataset_identifier: {dataset_identifier}",
+                f"label_mapping: {label_mapping}",
+                f"outer_test_size: {OUTER_TEST_SIZE}",
+                f"inner_validation_size: {INNER_VALIDATION_SIZE}",
+                f"random_state: {SPLIT_RANDOM_STATE}",
+                f"epochs: {DEFAULT_NUM_EPOCHS}",
+                f"batch_size: {batch_size}",
+                f"max_length: {max_length}",
+                f"learning_rate: {learning_rate:g}",
+                f"device: {device}",
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
+
+
+def _validate_fine_tuning_history(
+    history: Sequence[FineTuningEpochMetrics],
+) -> FineTuningEpochMetrics:
+    """Require one valid record for each fixed Day 5 epoch."""
+
+    if len(history) != DEFAULT_NUM_EPOCHS:
+        raise ValueError("Fine-tuning history must contain exactly three epochs")
+    if tuple(record.epoch for record in history) != tuple(
+        range(1, DEFAULT_NUM_EPOCHS + 1)
+    ):
+        raise ValueError("Fine-tuning history epochs must be ordered as 1, 2, 3")
+    for record in history:
+        if not math.isfinite(record.train_loss) or record.train_loss < 0.0:
+            raise ValueError("Fine-tuning train loss must be finite and non-negative")
+        if (
+            not math.isfinite(record.validation_accuracy)
+            or not 0.0 <= record.validation_accuracy <= 1.0
+        ):
+            raise ValueError(
+                "Fine-tuning validation accuracy must be finite and between 0 and 1"
+            )
+        if (
+            not math.isfinite(record.validation_macro_f1)
+            or not 0.0 <= record.validation_macro_f1 <= 1.0
+        ):
+            raise ValueError(
+                "Fine-tuning validation macro F1 must be finite and between 0 and 1"
+            )
+    return history[-1]
 
 
 def _validate_validation_batch(

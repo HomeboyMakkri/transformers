@@ -26,6 +26,8 @@ from .datasets import (
 )
 from .fine_tuning import (
     DEFAULT_BATCH_SIZE,
+    DEFAULT_FINE_TUNED_MODEL_DIRECTORY,
+    DEFAULT_FINE_TUNED_RESULTS_PATH,
     DEFAULT_LEARNING_RATE,
     DEFAULT_MAX_LENGTH,
     DEFAULT_NUM_EPOCHS,
@@ -41,6 +43,7 @@ from .fine_tuning import (
     evaluate_sequence_classifier,
     load_sequence_classifier,
     run_fine_tuning,
+    save_fine_tuning_artifacts,
     select_training_device,
     train_epoch,
 )
@@ -74,6 +77,8 @@ from .tokenization import (
 
 __all__ = [
     "DEFAULT_BATCH_SIZE",
+    "DEFAULT_FINE_TUNED_MODEL_DIRECTORY",
+    "DEFAULT_FINE_TUNED_RESULTS_PATH",
     "DEFAULT_LEARNING_RATE",
     "DEFAULT_MAX_LENGTH",
     "DEFAULT_MODEL_NAME",
@@ -122,6 +127,7 @@ __all__ = [
     "prepare_frozen_embedding_dataset",
     "run_fine_tuning",
     "save_baseline_results",
+    "save_fine_tuning_artifacts",
     "select_training_device",
     "similarity",
     "split_frozen_embedding_dataset",
