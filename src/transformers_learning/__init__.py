@@ -26,15 +26,18 @@ from .datasets import (
 )
 from .fine_tuning import (
     DEFAULT_BATCH_SIZE,
+    DEFAULT_LEARNING_RATE,
     DEFAULT_MAX_LENGTH,
     NUM_SENTIMENT_LABELS,
     SentimentDataLoaders,
     SentimentDataset,
     SentimentDatasetItem,
     SequenceClassifierSetup,
+    create_fine_tuning_optimizer,
     create_sentiment_dataloaders,
     load_sequence_classifier,
     select_training_device,
+    train_epoch,
 )
 from .modeling import (
     ProgressCallback,
@@ -66,6 +69,7 @@ from .tokenization import (
 
 __all__ = [
     "DEFAULT_BATCH_SIZE",
+    "DEFAULT_LEARNING_RATE",
     "DEFAULT_MAX_LENGTH",
     "DEFAULT_MODEL_NAME",
     "INNER_VALIDATION_SIZE",
@@ -93,6 +97,7 @@ __all__ = [
     "TokenizationWalkthrough",
     "TokenizerInfo",
     "adapt_sst2_split",
+    "create_fine_tuning_optimizer",
     "create_sentiment_dataloaders",
     "ensure_sst2_train_data",
     "evaluate_logistic_regression",
@@ -114,6 +119,7 @@ __all__ = [
     "split_sentiment_row_indices",
     "tokenize_single_text",
     "tokenize_texts",
+    "train_epoch",
     "train_logistic_regression",
     "validate_sentiment_dataframe",
     "visualize_attention",

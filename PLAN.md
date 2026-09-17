@@ -223,10 +223,11 @@ Work on one item per request. For each item, read its matching `tasks/dayN.md` s
 
 ### D5-04 — One training epoch
 
-- [ ] Implement `train_epoch` with `model.train()`, device transfer,
+- [x] **Status: complete.**
+- [x] Implement `train_epoch` with `model.train()`, device transfer,
   `optimizer.zero_grad()`, forward pass with labels, scalar cross-entropy loss,
   `loss.backward()`, and `optimizer.step()` for every batch.
-- [ ] Use `torch.optim.AdamW(model.parameters(), lr=2e-5)` and report mean loss
+- [x] Use `torch.optim.AdamW(model.parameters(), lr=2e-5)` and report mean loss
   per processed batch.
 - **Done when:** gradients update model parameters only during training and the
   returned epoch loss is finite and non-negative.

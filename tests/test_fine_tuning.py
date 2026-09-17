@@ -3,6 +3,7 @@ from typing import cast
 
 import pytest
 import torch
+from torch.optim import Optimizer
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from transformers import BatchEncoding, PreTrainedModel, PreTrainedTokenizerBase
 
@@ -10,11 +11,15 @@ from transformers_learning import fine_tuning
 from transformers_learning.datasets import SentimentDatasetValidationError
 from transformers_learning.fine_tuning import (
     DEFAULT_BATCH_SIZE,
+    DEFAULT_LEARNING_RATE,
     NUM_SENTIMENT_LABELS,
     SentimentDataset,
+    SentimentDatasetItem,
+    create_fine_tuning_optimizer,
     create_sentiment_dataloaders,
     load_sequence_classifier,
     select_training_device,
+    train_epoch,
 )
 
 
@@ -248,3 +253,137 @@ def test_load_sequence_classifier_uses_binary_head_and_moves_model(
     }
     assert batch["input_ids"].shape == (2, 4)
     assert outputs.logits.shape == (2, 2)
+
+
+class TinyTrainingModel(torch.nn.Module):
+    def __init__(self, events: list[str] | None = None) -> None:
+        super().__init__()
+        self.weight = torch.nn.Parameter(torch.tensor(0.1))
+        self.events = events
+        self.received_devices: list[tuple[torch.device, torch.device, torch.device]] = []
+        self.observed_losses: list[float] = []
+
+    def train(self, mode: bool = True) -> "TinyTrainingModel":
+        if self.events is not None:
+            self.events.append("train")
+        super().train(mode)
+        return self
+
+    def forward(
+        self,
+        *,
+        input_ids: torch.Tensor,
+        attention_mask: torch.Tensor,
+        labels: torch.Tensor,
+    ) -> SimpleNamespace:
+        if self.events is not None:
+            self.events.append("forward")
+        self.received_devices.append(
+            (input_ids.device, attention_mask.device, labels.device)
+        )
+        scores = input_ids[:, 1].float() * self.weight
+        logits = torch.stack((-scores, scores), dim=1)
+        loss = torch.nn.functional.cross_entropy(logits, labels)
+        self.observed_losses.append(float(loss.detach().item()))
+        if self.events is not None:
+            loss.register_hook(lambda gradient: self._record_backward(gradient))
+        return SimpleNamespace(loss=loss, logits=logits)
+
+    def _record_backward(self, gradient: torch.Tensor) -> torch.Tensor:
+        if self.events is not None:
+            self.events.append("backward")
+        return gradient
+
+
+def make_ordered_training_loader(
+    batch_size: int = 1,
+) -> DataLoader[SentimentDatasetItem]:
+    tokenizer, _ = make_fake_tokenizer()
+    dataset = SentimentDataset(
+        ["Good movie", "Bad movie"], [1, 0], tokenizer, max_length=4
+    )
+    return create_sentiment_dataloaders(
+        dataset,
+        dataset,
+        batch_size=batch_size,
+    ).validation
+
+
+def test_create_fine_tuning_optimizer_uses_all_parameters_and_learning_rate() -> None:
+    model = TinyTrainingModel()
+
+    optimizer = create_fine_tuning_optimizer(cast(PreTrainedModel, model))
+
+    assert isinstance(optimizer, torch.optim.AdamW)
+    assert optimizer.param_groups[0]["lr"] == DEFAULT_LEARNING_RATE == 2e-5
+    assert optimizer.param_groups[0]["params"] == [model.weight]
+
+
+def test_train_epoch_updates_parameters_and_returns_mean_loss() -> None:
+    model = TinyTrainingModel()
+    optimizer = torch.optim.AdamW(model.parameters(), lr=0.01)
+    initial_weight = model.weight.detach().clone()
+
+    mean_loss = train_epoch(
+        cast(PreTrainedModel, model),
+        make_ordered_training_loader(batch_size=2),
+        optimizer,
+        torch.device("cpu"),
+    )
+
+    assert model.training is True
+    assert mean_loss >= 0.0
+    assert torch.isfinite(torch.tensor(mean_loss))
+    assert not torch.equal(model.weight.detach(), initial_weight)
+    assert model.received_devices == [
+        (torch.device("cpu"), torch.device("cpu"), torch.device("cpu"))
+    ]
+
+
+def test_train_epoch_uses_the_required_operation_order_for_every_batch() -> None:
+    events: list[str] = []
+    model = TinyTrainingModel(events)
+
+    class RecordingOptimizer:
+        def zero_grad(self) -> None:
+            events.append("zero_grad")
+            model.weight.grad = None
+
+        def step(self) -> None:
+            events.append("step")
+
+    mean_loss = train_epoch(
+        cast(PreTrainedModel, model),
+        make_ordered_training_loader(batch_size=1),
+        cast(Optimizer, RecordingOptimizer()),
+        torch.device("cpu"),
+    )
+
+    assert events == [
+        "train",
+        "zero_grad",
+        "forward",
+        "backward",
+        "step",
+        "zero_grad",
+        "forward",
+        "backward",
+        "step",
+    ]
+    assert mean_loss == pytest.approx(
+        sum(model.observed_losses) / len(model.observed_losses)
+    )
+
+
+def test_train_epoch_rejects_an_empty_dataloader() -> None:
+    model = TinyTrainingModel()
+    optimizer = torch.optim.AdamW(model.parameters(), lr=0.01)
+    empty_loader = cast(DataLoader[SentimentDatasetItem], [])
+
+    with pytest.raises(ValueError, match="at least one batch"):
+        train_epoch(
+            cast(PreTrainedModel, model),
+            empty_loader,
+            optimizer,
+            torch.device("cpu"),
+        )

@@ -1,22 +1,26 @@
 """Reusable PyTorch inputs for Transformer sentiment fine-tuning."""
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TypedDict, cast
 
 import pandas as pd
 import torch
+from torch.optim import Optimizer
 from torch.utils.data import DataLoader, Dataset
 from transformers import (
     AutoModelForSequenceClassification,
     PreTrainedModel,
     PreTrainedTokenizerBase,
 )
+from transformers.modeling_outputs import SequenceClassifierOutput
 
 from .datasets import LABEL_COLUMN, TEXT_COLUMN, validate_sentiment_dataframe
 from .tokenization import DEFAULT_MODEL_NAME
 
 DEFAULT_BATCH_SIZE = 16
+DEFAULT_LEARNING_RATE = 2e-5
 DEFAULT_MAX_LENGTH = 128
 NUM_SENTIMENT_LABELS = 2
 
@@ -143,6 +147,67 @@ def load_sequence_classifier(
     )
     model.to(selected_device)
     return SequenceClassifierSetup(model=model, device=selected_device)
+
+
+def create_fine_tuning_optimizer(
+    model: PreTrainedModel,
+    learning_rate: float = DEFAULT_LEARNING_RATE,
+) -> torch.optim.AdamW:
+    """Create AdamW over every sequence-classifier parameter."""
+
+    if not math.isfinite(learning_rate) or learning_rate <= 0.0:
+        raise ValueError("learning_rate must be finite and positive")
+    return torch.optim.AdamW(model.parameters(), lr=learning_rate)
+
+
+def train_epoch(
+    model: PreTrainedModel,
+    dataloader: DataLoader[SentimentDatasetItem],
+    optimizer: Optimizer,
+    device: torch.device,
+) -> float:
+    """Fine-tune the classifier for one epoch and return mean batch loss."""
+
+    model.train()
+    total_loss = 0.0
+    processed_batches = 0
+
+    for batch in dataloader:
+        input_ids = batch["input_ids"].to(device)
+        attention_mask = batch["attention_mask"].to(device)
+        labels = batch["labels"].to(device)
+
+        optimizer.zero_grad()
+        outputs = cast(
+            SequenceClassifierOutput,
+            model(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                labels=labels,
+            ),
+        )
+        loss = outputs.loss
+        if loss is None:
+            raise RuntimeError("Sequence classifier output does not contain loss")
+        if loss.ndim != 0:
+            raise ValueError("Training loss must be a scalar tensor")
+
+        loss_value = float(loss.detach().item())
+        if not math.isfinite(loss_value) or loss_value < 0.0:
+            raise ValueError("Training loss must be finite and non-negative")
+
+        loss.backward()
+        optimizer.step()
+        total_loss += loss_value
+        processed_batches += 1
+
+    if processed_batches == 0:
+        raise ValueError("Training dataloader must contain at least one batch")
+
+    mean_loss = total_loss / processed_batches
+    if not math.isfinite(mean_loss) or mean_loss < 0.0:
+        raise ValueError("Mean training loss must be finite and non-negative")
+    return mean_loss
 
 
 def _extract_single_sequence_tensor(
