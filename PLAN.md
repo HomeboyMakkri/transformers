@@ -237,9 +237,10 @@ Work on one item per request. For each item, read its matching `tasks/dayN.md` s
 
 ### D5-05 — Validation evaluation
 
-- [ ] Implement evaluation with `model.eval()` and a no-gradient context;
+- [x] **Status: complete.**
+- [x] Implement evaluation with `model.eval()` and a no-gradient context;
   convert logits `[batch, 2]` to predictions `[batch]` with `argmax(dim=1)`.
-- [ ] Report validation accuracy and macro F1 with explicit binary label
+- [x] Report validation accuracy and macro F1 with explicit binary label
   handling; keep predictions aligned with their labels.
 - **Done when:** evaluation cannot create gradients or update parameters, and
   both metrics are finite values in `[0, 1]` calculated only from validation

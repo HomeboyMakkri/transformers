@@ -3,10 +3,13 @@
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import TypedDict, cast
+from typing import Any, TypedDict, cast
 
+import numpy as np
+import numpy.typing as npt
 import pandas as pd
 import torch
+from sklearn.metrics import accuracy_score, f1_score
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader, Dataset
 from transformers import (
@@ -47,6 +50,16 @@ class SequenceClassifierSetup:
 
     model: PreTrainedModel
     device: torch.device
+
+
+@dataclass(frozen=True)
+class ValidationEvaluation:
+    """Ordered validation labels, predictions, and aggregate metrics."""
+
+    labels: npt.NDArray[np.int64]
+    predictions: npt.NDArray[np.int64]
+    accuracy: float
+    macro_f1: float
 
 
 class SentimentDataset(Dataset[SentimentDatasetItem]):
@@ -208,6 +221,86 @@ def train_epoch(
     if not math.isfinite(mean_loss) or mean_loss < 0.0:
         raise ValueError("Mean training loss must be finite and non-negative")
     return mean_loss
+
+
+def evaluate_sequence_classifier(
+    model: PreTrainedModel,
+    dataloader: DataLoader[SentimentDatasetItem],
+    device: torch.device,
+) -> ValidationEvaluation:
+    """Evaluate ordered validation batches without gradients or updates."""
+
+    model.eval()
+    all_predictions: list[torch.Tensor] = []
+    all_labels: list[torch.Tensor] = []
+
+    with torch.no_grad():
+        for batch in dataloader:
+            input_ids = batch["input_ids"].to(device)
+            attention_mask = batch["attention_mask"].to(device)
+            labels = batch["labels"].to(device)
+            outputs = cast(
+                SequenceClassifierOutput,
+                model(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                ),
+            )
+            logits = outputs.logits
+            if logits is None:
+                raise RuntimeError("Sequence classifier output does not contain logits")
+            _validate_validation_batch(logits, labels)
+            predictions = torch.argmax(logits, dim=1)
+            all_predictions.append(predictions.detach().cpu())
+            all_labels.append(labels.detach().cpu())
+
+    if not all_predictions:
+        raise ValueError("Validation dataloader must contain at least one batch")
+
+    predictions_array = np.asarray(
+        torch.cat(all_predictions).numpy(), dtype=np.int64
+    )
+    labels_array = np.asarray(torch.cat(all_labels).numpy(), dtype=np.int64)
+    if not np.all(np.isin(labels_array, [0, 1])):
+        raise ValueError("Validation labels must use only SST-2 classes 0 and 1")
+
+    accuracy = float(accuracy_score(labels_array, predictions_array))
+    macro_f1 = float(
+        f1_score(
+            labels_array,
+            predictions_array,
+            labels=[0, 1],
+            average="macro",
+            zero_division=cast(Any, 0),
+        )
+    )
+    if not math.isfinite(accuracy) or not 0.0 <= accuracy <= 1.0:
+        raise ValueError("Validation accuracy must be finite and between 0 and 1")
+    if not math.isfinite(macro_f1) or not 0.0 <= macro_f1 <= 1.0:
+        raise ValueError("Validation macro F1 must be finite and between 0 and 1")
+
+    return ValidationEvaluation(
+        labels=labels_array,
+        predictions=predictions_array,
+        accuracy=accuracy,
+        macro_f1=macro_f1,
+    )
+
+
+def _validate_validation_batch(
+    logits: torch.Tensor,
+    labels: torch.Tensor,
+) -> None:
+    """Validate the model-output boundary before collecting predictions."""
+
+    if logits.ndim != 2 or logits.shape[1] != NUM_SENTIMENT_LABELS:
+        raise ValueError("Validation logits must have shape [batch, 2]")
+    if labels.ndim != 1:
+        raise ValueError("Validation labels must have shape [batch]")
+    if logits.shape[0] != labels.shape[0]:
+        raise ValueError("Validation logits must align with validation labels")
+    if not bool(torch.isfinite(logits).all().item()):
+        raise ValueError("Validation logits must contain only finite values")
 
 
 def _extract_single_sequence_tensor(

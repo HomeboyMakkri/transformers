@@ -17,6 +17,7 @@ from transformers_learning.fine_tuning import (
     SentimentDatasetItem,
     create_fine_tuning_optimizer,
     create_sentiment_dataloaders,
+    evaluate_sequence_classifier,
     load_sequence_classifier,
     select_training_device,
     train_epoch,
@@ -385,5 +386,128 @@ def test_train_epoch_rejects_an_empty_dataloader() -> None:
             cast(PreTrainedModel, model),
             empty_loader,
             optimizer,
+            torch.device("cpu"),
+        )
+
+
+class TinyEvaluationModel(torch.nn.Module):
+    def __init__(self, *, always_negative: bool = False) -> None:
+        super().__init__()
+        self.bias = torch.nn.Parameter(torch.tensor(0.25))
+        self.always_negative = always_negative
+        self.grad_enabled: list[bool] = []
+        self.received_devices: list[tuple[torch.device, torch.device]] = []
+
+    def forward(
+        self,
+        *,
+        input_ids: torch.Tensor,
+        attention_mask: torch.Tensor,
+    ) -> SimpleNamespace:
+        self.grad_enabled.append(torch.is_grad_enabled())
+        self.received_devices.append((input_ids.device, attention_mask.device))
+        if self.always_negative:
+            positive_scores = torch.zeros(input_ids.shape[0])
+        else:
+            positive_scores = (input_ids[:, 1] == 11).float()
+        logits = torch.stack((1.0 - positive_scores, positive_scores), dim=1)
+        logits = logits + self.bias * 0.0
+        return SimpleNamespace(logits=logits)
+
+
+def test_evaluate_sequence_classifier_preserves_order_and_disables_gradients() -> None:
+    model = TinyEvaluationModel()
+    initial_bias = model.bias.detach().clone()
+
+    evaluation = evaluate_sequence_classifier(
+        cast(PreTrainedModel, model),
+        make_ordered_training_loader(batch_size=1),
+        torch.device("cpu"),
+    )
+
+    assert model.training is False
+    assert model.grad_enabled == [False, False]
+    assert model.received_devices == [
+        (torch.device("cpu"), torch.device("cpu")),
+        (torch.device("cpu"), torch.device("cpu")),
+    ]
+    assert torch.equal(model.bias.detach(), initial_bias)
+    assert model.bias.grad is None
+    assert evaluation.labels.tolist() == [1, 0]
+    assert evaluation.predictions.tolist() == [1, 0]
+    assert evaluation.accuracy == 1.0
+    assert evaluation.macro_f1 == 1.0
+
+
+def test_evaluate_sequence_classifier_calculates_binary_macro_f1() -> None:
+    model = TinyEvaluationModel(always_negative=True)
+
+    evaluation = evaluate_sequence_classifier(
+        cast(PreTrainedModel, model),
+        make_ordered_training_loader(batch_size=2),
+        torch.device("cpu"),
+    )
+
+    assert evaluation.labels.tolist() == [1, 0]
+    assert evaluation.predictions.tolist() == [0, 0]
+    assert evaluation.accuracy == 0.5
+    assert evaluation.macro_f1 == pytest.approx(1.0 / 3.0)
+
+
+@pytest.mark.parametrize(
+    ("logits", "message"),
+    (
+        (torch.zeros(2), r"shape \[batch, 2\]"),
+        (torch.zeros((2, 3)), r"shape \[batch, 2\]"),
+        (torch.zeros((1, 2)), "align"),
+        (torch.tensor([[float("nan"), 0.0], [0.0, 0.0]]), "finite"),
+    ),
+)
+def test_evaluate_sequence_classifier_rejects_malformed_logits(
+    logits: torch.Tensor,
+    message: str,
+) -> None:
+    class MalformedEvaluationModel(torch.nn.Module):
+        def forward(
+            self,
+            *,
+            input_ids: torch.Tensor,
+            attention_mask: torch.Tensor,
+        ) -> SimpleNamespace:
+            return SimpleNamespace(logits=logits)
+
+    with pytest.raises(ValueError, match=message):
+        evaluate_sequence_classifier(
+            cast(PreTrainedModel, MalformedEvaluationModel()),
+            make_ordered_training_loader(batch_size=2),
+            torch.device("cpu"),
+        )
+
+
+def test_evaluate_sequence_classifier_rejects_an_empty_dataloader() -> None:
+    empty_loader = cast(DataLoader[SentimentDatasetItem], [])
+
+    with pytest.raises(ValueError, match="at least one batch"):
+        evaluate_sequence_classifier(
+            cast(PreTrainedModel, TinyEvaluationModel()),
+            empty_loader,
+            torch.device("cpu"),
+        )
+
+
+def test_evaluate_sequence_classifier_requires_logits() -> None:
+    class MissingLogitsModel(torch.nn.Module):
+        def forward(
+            self,
+            *,
+            input_ids: torch.Tensor,
+            attention_mask: torch.Tensor,
+        ) -> SimpleNamespace:
+            return SimpleNamespace(logits=None)
+
+    with pytest.raises(RuntimeError, match="does not contain logits"):
+        evaluate_sequence_classifier(
+            cast(PreTrainedModel, MissingLogitsModel()),
+            make_ordered_training_loader(batch_size=2),
             torch.device("cpu"),
         )
