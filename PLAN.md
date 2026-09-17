@@ -279,10 +279,12 @@ Work on one item per request. For each item, read its matching `tasks/dayN.md` s
 
 ### D5-08 — Day 5 notebook walkthrough and review
 
-- [ ] Add a thin notebook that calls reusable `src/` functions, displays one
+- [x] **Status: implementation complete; real notebook execution remains a
+  separate approved integration run.**
+- [x] Add a thin notebook that calls reusable `src/` functions, displays one
   sample and one batch shape, then launches the explicitly approved training
   run and records its per-epoch validation history.
-- [ ] Explain fine-tuning versus frozen embeddings, `train()` versus `eval()`,
+- [x] Explain fine-tuning versus frozen embeddings, `train()` versus `eval()`,
   enabled versus disabled gradients, and why validation and outer test data
   have different roles.
 - **Done when:** the `tasks/day5.md` checkpoint is satisfied and the complete
