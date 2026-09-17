@@ -250,10 +250,11 @@ Work on one item per request. For each item, read its matching `tasks/dayN.md` s
 
 ### D5-06 — Fixed three-epoch fine-tuning run
 
-- [ ] Run exactly three epochs, calling `train_epoch` and validation evaluation
+- [x] **Status: complete.**
+- [x] Run exactly three epochs, calling `train_epoch` and validation evaluation
   once per epoch; record train loss, validation accuracy, and validation macro
   F1 for every epoch.
-- [ ] Treat validation metrics as monitoring information for this fixed run;
+- [x] Treat validation metrics as monitoring information for this fixed run;
   do not inspect the outer test set, tune hyperparameters, or add early
   stopping in Day 5.
 - **Done when:** the run produces three ordered metric records and leaves the

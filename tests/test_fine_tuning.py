@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 from typing import cast
 
+import numpy as np
 import pytest
 import torch
 from torch.optim import Optimizer
@@ -12,13 +13,17 @@ from transformers_learning.datasets import SentimentDatasetValidationError
 from transformers_learning.fine_tuning import (
     DEFAULT_BATCH_SIZE,
     DEFAULT_LEARNING_RATE,
+    DEFAULT_NUM_EPOCHS,
     NUM_SENTIMENT_LABELS,
+    FineTuningEpochMetrics,
     SentimentDataset,
     SentimentDatasetItem,
+    ValidationEvaluation,
     create_fine_tuning_optimizer,
     create_sentiment_dataloaders,
     evaluate_sequence_classifier,
     load_sequence_classifier,
+    run_fine_tuning,
     select_training_device,
     train_epoch,
 )
@@ -511,3 +516,82 @@ def test_evaluate_sequence_classifier_requires_logits() -> None:
             make_ordered_training_loader(batch_size=2),
             torch.device("cpu"),
         )
+
+
+def test_run_fine_tuning_records_exactly_three_ordered_epochs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    train_losses = (0.9, 0.6, 0.4)
+    validation_accuracies = (0.7, 0.6, 0.8)
+    validation_macro_f1_scores = (0.65, 0.55, 0.75)
+    model = torch.nn.Linear(1, 1)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=0.01)
+    tokenizer, _ = make_fake_tokenizer()
+    dataset = SentimentDataset(
+        ["Good movie", "Bad movie"], [1, 0], tokenizer, max_length=4
+    )
+    dataloaders = create_sentiment_dataloaders(dataset, dataset, batch_size=2)
+
+    def fake_train_epoch(
+        received_model: PreTrainedModel,
+        received_dataloader: DataLoader[SentimentDatasetItem],
+        received_optimizer: Optimizer,
+        received_device: torch.device,
+    ) -> float:
+        epoch_index = len(events) // 2
+        events.append(f"train-{epoch_index + 1}")
+        assert received_model is model
+        assert received_dataloader is dataloaders.train
+        assert received_optimizer is optimizer
+        assert received_device == torch.device("cpu")
+        received_model.train()
+        return train_losses[epoch_index]
+
+    def fake_evaluate_sequence_classifier(
+        received_model: PreTrainedModel,
+        received_dataloader: DataLoader[SentimentDatasetItem],
+        received_device: torch.device,
+    ) -> ValidationEvaluation:
+        epoch_index = (len(events) + 1) // 2
+        events.append(f"validation-{epoch_index}")
+        assert received_model is model
+        assert received_dataloader is dataloaders.validation
+        assert received_device == torch.device("cpu")
+        received_model.eval()
+        return ValidationEvaluation(
+            labels=np.array([1, 0], dtype=np.int64),
+            predictions=np.array([1, 0], dtype=np.int64),
+            accuracy=validation_accuracies[epoch_index - 1],
+            macro_f1=validation_macro_f1_scores[epoch_index - 1],
+        )
+
+    monkeypatch.setattr(fine_tuning, "train_epoch", fake_train_epoch)
+    monkeypatch.setattr(
+        fine_tuning,
+        "evaluate_sequence_classifier",
+        fake_evaluate_sequence_classifier,
+    )
+
+    history = run_fine_tuning(
+        cast(PreTrainedModel, model),
+        dataloaders,
+        optimizer,
+        torch.device("cpu"),
+    )
+
+    assert DEFAULT_NUM_EPOCHS == 3
+    assert events == [
+        "train-1",
+        "validation-1",
+        "train-2",
+        "validation-2",
+        "train-3",
+        "validation-3",
+    ]
+    assert history == (
+        FineTuningEpochMetrics(1, 0.9, 0.7, 0.65),
+        FineTuningEpochMetrics(2, 0.6, 0.6, 0.55),
+        FineTuningEpochMetrics(3, 0.4, 0.8, 0.75),
+    )
+    assert model.training is False

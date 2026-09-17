@@ -25,6 +25,7 @@ from .tokenization import DEFAULT_MODEL_NAME
 DEFAULT_BATCH_SIZE = 16
 DEFAULT_LEARNING_RATE = 2e-5
 DEFAULT_MAX_LENGTH = 128
+DEFAULT_NUM_EPOCHS = 3
 NUM_SENTIMENT_LABELS = 2
 
 
@@ -60,6 +61,16 @@ class ValidationEvaluation:
     predictions: npt.NDArray[np.int64]
     accuracy: float
     macro_f1: float
+
+
+@dataclass(frozen=True)
+class FineTuningEpochMetrics:
+    """Training and validation metrics recorded after one epoch."""
+
+    epoch: int
+    train_loss: float
+    validation_accuracy: float
+    validation_macro_f1: float
 
 
 class SentimentDataset(Dataset[SentimentDatasetItem]):
@@ -285,6 +296,39 @@ def evaluate_sequence_classifier(
         accuracy=accuracy,
         macro_f1=macro_f1,
     )
+
+
+def run_fine_tuning(
+    model: PreTrainedModel,
+    dataloaders: SentimentDataLoaders,
+    optimizer: Optimizer,
+    device: torch.device,
+) -> tuple[FineTuningEpochMetrics, ...]:
+    """Run the fixed three-epoch Day 5 training and validation sequence.
+
+    Validation metrics are recorded for monitoring only. They do not change
+    the epoch count, select a checkpoint, or expose the outer test split.
+    After the third validation call the model retains its epoch-3 weights and
+    remains in evaluation mode.
+    """
+
+    history: list[FineTuningEpochMetrics] = []
+    for epoch in range(1, DEFAULT_NUM_EPOCHS + 1):
+        train_loss = train_epoch(model, dataloaders.train, optimizer, device)
+        validation = evaluate_sequence_classifier(
+            model,
+            dataloaders.validation,
+            device,
+        )
+        history.append(
+            FineTuningEpochMetrics(
+                epoch=epoch,
+                train_loss=train_loss,
+                validation_accuracy=validation.accuracy,
+                validation_macro_f1=validation.macro_f1,
+            )
+        )
+    return tuple(history)
 
 
 def _validate_validation_batch(
