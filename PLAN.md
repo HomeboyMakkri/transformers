@@ -313,10 +313,13 @@ Work on one item per request. For each item, read its matching `tasks/dayN.md` s
 
 ### D6-02 — Recreate and load the two model paths
 
-- [ ] Recreate frozen embeddings for the outer-training rows and fit the fixed
+- [x] **Status: implementation complete; real inference paths require the
+  ignored Day 5 `fine_tuned_model/` artifact and a separate approved
+  data/model integration run.**
+- [x] Recreate frozen embeddings for the outer-training rows and fit the fixed
   Day 4 `LogisticRegression(max_iter=1000, n_jobs=-1)` only on those features;
   use the shared base tokenizer and encoder in evaluation/no-gradient mode.
-- [ ] Reload the fine-tuned sequence classifier and tokenizer from
+- [x] Reload the fine-tuned sequence classifier and tokenizer from
   `fine_tuned_model/`, select its execution device, move the model there, and
   set evaluation mode without performing further optimization.
 - **Done when:** both final inference paths are ready before the outer-test

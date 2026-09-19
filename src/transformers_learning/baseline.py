@@ -116,9 +116,19 @@ def train_logistic_regression(
     training path. They remain untouched until the held-out evaluation step.
     """
 
-    _validate_training_partition(split.X_train, split.y_train)
+    return train_logistic_regression_on_frozen_embeddings(
+        FrozenEmbeddingDataset(features=split.X_train, labels=split.y_train)
+    )
+
+
+def train_logistic_regression_on_frozen_embeddings(
+    training_dataset: FrozenEmbeddingDataset,
+) -> LogisticRegression:
+    """Fit the fixed baseline from one already-isolated training partition."""
+
+    _validate_frozen_embedding_dataset(training_dataset)
     classifier = LogisticRegression(max_iter=1000, n_jobs=-1)
-    classifier.fit(split.X_train, split.y_train)
+    classifier.fit(training_dataset.features, training_dataset.labels)
     return classifier
 
 

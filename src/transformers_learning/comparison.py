@@ -8,7 +8,19 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
+import torch
+from sklearn.linear_model import LogisticRegression
+from transformers import (
+    AutoModelForSequenceClassification,
+    AutoTokenizer,
+    PreTrainedModel,
+    PreTrainedTokenizerBase,
+)
 
+from .baseline import (
+    prepare_frozen_embedding_dataset,
+    train_logistic_regression_on_frozen_embeddings,
+)
 from .datasets import LABEL_COLUMN, TEXT_COLUMN, validate_sentiment_dataframe
 from .fine_tuning import DEFAULT_FINE_TUNED_MODEL_DIRECTORY, NUM_SENTIMENT_LABELS
 from .splitting import OuterSentimentSplit, split_outer_sentiment_indices
@@ -41,6 +53,24 @@ class Day6ArtifactInputs:
     """Local inputs for Day 6; the frozen baseline is recreated, never loaded."""
 
     fine_tuned_model_directory: Path
+
+
+@dataclass(frozen=True)
+class FrozenBaselineSetup:
+    """A freshly fitted baseline and the frozen Transformer used to create it."""
+
+    classifier: LogisticRegression
+    tokenizer: PreTrainedTokenizerBase
+    encoder: PreTrainedModel
+
+
+@dataclass(frozen=True)
+class FineTunedInferenceSetup:
+    """A local epoch-3 sequence classifier ready for no-gradient inference."""
+
+    model: PreTrainedModel
+    tokenizer: PreTrainedTokenizerBase
+    device: torch.device
 
 
 def prepare_comparison_dataset(dataframe: pd.DataFrame) -> ComparisonDataset:
@@ -77,6 +107,60 @@ def get_day6_artifact_inputs(
         fine_tuned_model_directory
     )
     return Day6ArtifactInputs(fine_tuned_model_directory=validated_directory)
+
+
+def recreate_frozen_baseline(
+    comparison: ComparisonDataset,
+    tokenizer: PreTrainedTokenizerBase,
+    encoder: PreTrainedModel,
+    batch_size: int = 32,
+) -> FrozenBaselineSetup:
+    """Fit the fixed Day 4 baseline using only Day 6 outer-training rows."""
+
+    training_dataset = prepare_frozen_embedding_dataset(
+        comparison.outer_train,
+        tokenizer,
+        encoder,
+        batch_size=batch_size,
+    )
+    classifier = train_logistic_regression_on_frozen_embeddings(training_dataset)
+    return FrozenBaselineSetup(
+        classifier=classifier,
+        tokenizer=tokenizer,
+        encoder=encoder,
+    )
+
+
+def select_inference_device() -> torch.device:
+    """Select CUDA when available and otherwise use CPU for Day 6 inference."""
+
+    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+def load_fine_tuned_inference(
+    artifact_inputs: Day6ArtifactInputs,
+    device: torch.device | None = None,
+) -> FineTunedInferenceSetup:
+    """Reload the saved local binary classifier without any optimization step."""
+
+    directory = validate_fine_tuned_model_artifact(
+        artifact_inputs.fine_tuned_model_directory
+    )
+    selected_device = select_inference_device() if device is None else device
+    source = str(directory)
+    tokenizer = AutoTokenizer.from_pretrained(source, local_files_only=True)
+    model = AutoModelForSequenceClassification.from_pretrained(
+        source,
+        local_files_only=True,
+    )
+    _validate_loaded_binary_head(model)
+    model.to(selected_device)
+    model.eval()
+    return FineTunedInferenceSetup(
+        model=model,
+        tokenizer=tokenizer,
+        device=selected_device,
+    )
 
 
 def validate_fine_tuned_model_artifact(directory: Path) -> Path:
@@ -168,4 +252,14 @@ def _validate_binary_head(config: dict[str, Any]) -> None:
     if not isinstance(id2label, dict) or set(id2label) != {"0", "1"}:
         raise FineTunedArtifactError(
             "Fine-tuned model config must declare binary labels 0 and 1"
+        )
+
+
+def _validate_loaded_binary_head(model: PreTrainedModel) -> None:
+    """Reject an artifact whose loaded classifier head is not binary."""
+
+    num_labels = getattr(model.config, "num_labels", None)
+    if isinstance(num_labels, bool) or num_labels != NUM_SENTIMENT_LABELS:
+        raise FineTunedArtifactError(
+            "Loaded fine-tuned model must have a binary SST-2 classification head"
         )
