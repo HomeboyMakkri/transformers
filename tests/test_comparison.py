@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import cast
 
 import numpy as np
@@ -13,8 +14,10 @@ from transformers_learning.baseline import FrozenEmbeddingDataset
 from transformers_learning.comparison import (
     Day6ArtifactInputs,
     FineTunedArtifactError,
+    FineTunedInferenceSetup,
     get_day6_artifact_inputs,
     load_fine_tuned_inference,
+    predict_fine_tuned,
     prepare_comparison_dataset,
     recreate_frozen_baseline,
 )
@@ -244,3 +247,129 @@ def test_load_fine_tuned_inference_uses_local_binary_artifact_and_eval_mode(
     assert setup.model is fake_model
     assert setup.tokenizer is fake_tokenizer
     assert setup.device == torch.device("cpu")
+
+
+def test_predict_fine_tuned_batches_preserves_order_and_disables_gradients(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tokenization_batches: list[tuple[str, ...]] = []
+    moved_devices: list[torch.device] = []
+    model_input_shapes: list[tuple[int, ...]] = []
+    gradient_states: list[bool] = []
+    text_ids = {"one": 0, "first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5}
+
+    class FakeEncoding(dict[str, torch.Tensor]):
+        def to(self, device: torch.device) -> "FakeEncoding":
+            moved_devices.append(device)
+            return self
+
+    def fake_tokenize(
+        texts: tuple[str, ...],
+        tokenizer: PreTrainedTokenizerBase,
+        max_length: int,
+    ) -> FakeEncoding:
+        del tokenizer
+        assert max_length == 128
+        tokenization_batches.append(texts)
+        input_ids = torch.tensor([[text_ids[text]] for text in texts])
+        return FakeEncoding(
+            input_ids=input_ids,
+            attention_mask=torch.ones_like(input_ids),
+        )
+
+    class FakeModel:
+        def __init__(self) -> None:
+            self.eval_calls = 0
+
+        def eval(self) -> "FakeModel":
+            self.eval_calls += 1
+            return self
+
+        def __call__(self, **encoding: torch.Tensor) -> SimpleNamespace:
+            input_ids = encoding["input_ids"]
+            model_input_shapes.append(tuple(input_ids.shape))
+            gradient_states.append(torch.is_grad_enabled())
+            first_logit = input_ids[:, 0].to(dtype=torch.float32)
+            return SimpleNamespace(logits=torch.stack((first_logit, -first_logit), dim=1))
+
+    fake_model = FakeModel()
+    setup = FineTunedInferenceSetup(
+        model=cast(PreTrainedModel, fake_model),
+        tokenizer=cast(PreTrainedTokenizerBase, object()),
+        device=torch.device("cpu"),
+    )
+    monkeypatch.setattr(comparison, "tokenize_texts", fake_tokenize)
+
+    scalar_prediction = predict_fine_tuned("one", setup, batch_size=2)
+    predictions = predict_fine_tuned(
+        ["first", "second", "third", "fourth", "fifth"],
+        setup,
+        batch_size=2,
+    )
+
+    assert [record.text for record in scalar_prediction] == ["one"]
+    assert [record.text for record in predictions] == [
+        "first",
+        "second",
+        "third",
+        "fourth",
+        "fifth",
+    ]
+    assert [record.prediction for record in predictions] == [0, 0, 0, 0, 0]
+    assert tokenization_batches == [
+        ("one",),
+        ("first", "second"),
+        ("third", "fourth"),
+        ("fifth",),
+    ]
+    assert model_input_shapes == [(1, 1), (2, 1), (2, 1), (1, 1)]
+    assert moved_devices == [torch.device("cpu")] * 4
+    assert gradient_states == [False] * 4
+    assert fake_model.eval_calls == 2
+    for record in (*scalar_prediction, *predictions):
+        assert record.probabilities.shape == (2,)
+        assert np.isfinite(record.probabilities).all()
+        assert np.isclose(record.probabilities.sum(), 1.0)
+
+
+@pytest.mark.parametrize(
+    ("texts", "logits", "message"),
+    (
+        ([], torch.zeros((1, 2)), "at least one"),
+        (["Text"], torch.zeros((1, 3)), "shape"),
+        (["Text"], torch.tensor([[float("nan"), 0.0]]), "finite"),
+    ),
+)
+def test_predict_fine_tuned_rejects_empty_input_and_malformed_logits(
+    monkeypatch: pytest.MonkeyPatch,
+    texts: list[str],
+    logits: torch.Tensor,
+    message: str,
+) -> None:
+    class FakeEncoding(dict[str, torch.Tensor]):
+        def to(self, device: torch.device) -> "FakeEncoding":
+            return self
+
+    class FakeModel:
+        def eval(self) -> "FakeModel":
+            return self
+
+        def __call__(self, **encoding: torch.Tensor) -> SimpleNamespace:
+            return SimpleNamespace(logits=logits)
+
+    setup = FineTunedInferenceSetup(
+        model=cast(PreTrainedModel, FakeModel()),
+        tokenizer=cast(PreTrainedTokenizerBase, object()),
+        device=torch.device("cpu"),
+    )
+    monkeypatch.setattr(
+        comparison,
+        "tokenize_texts",
+        lambda *args, **kwargs: FakeEncoding(
+            input_ids=torch.ones((1, 1), dtype=torch.long),
+            attention_mask=torch.ones((1, 1), dtype=torch.long),
+        ),
+    )
+
+    with pytest.raises(ValueError, match=message):
+        predict_fine_tuned(texts, setup)

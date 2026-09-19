@@ -1,9 +1,10 @@
 """Shared Day 6 data and artifact boundaries for model comparison."""
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -16,6 +17,7 @@ from transformers import (
     PreTrainedModel,
     PreTrainedTokenizerBase,
 )
+from transformers.modeling_outputs import SequenceClassifierOutput
 
 from .baseline import (
     prepare_frozen_embedding_dataset,
@@ -24,6 +26,7 @@ from .baseline import (
 from .datasets import LABEL_COLUMN, TEXT_COLUMN, validate_sentiment_dataframe
 from .fine_tuning import DEFAULT_FINE_TUNED_MODEL_DIRECTORY, NUM_SENTIMENT_LABELS
 from .splitting import OuterSentimentSplit, split_outer_sentiment_indices
+from .tokenization import tokenize_texts
 
 _MODEL_CONFIG_FILENAME = "config.json"
 _TOKENIZER_CONFIG_FILENAME = "tokenizer_config.json"
@@ -71,6 +74,15 @@ class FineTunedInferenceSetup:
     model: PreTrainedModel
     tokenizer: PreTrainedTokenizerBase
     device: torch.device
+
+
+@dataclass(frozen=True)
+class SentimentPrediction:
+    """One ordered binary prediction with class probabilities in label order."""
+
+    text: str
+    prediction: int
+    probabilities: npt.NDArray[np.float64]
 
 
 def prepare_comparison_dataset(dataframe: pd.DataFrame) -> ComparisonDataset:
@@ -161,6 +173,43 @@ def load_fine_tuned_inference(
         tokenizer=tokenizer,
         device=selected_device,
     )
+
+
+def predict_fine_tuned(
+    texts: str | Sequence[str],
+    setup: FineTunedInferenceSetup,
+    batch_size: int = 32,
+) -> tuple[SentimentPrediction, ...]:
+    """Predict binary sentiment from one text or an ordered text sequence."""
+
+    normalized_texts = _normalize_prediction_texts(texts)
+    _validate_batch_size(batch_size)
+    setup.model.eval()
+    predictions: list[SentimentPrediction] = []
+
+    for start in range(0, len(normalized_texts), batch_size):
+        batch_texts = normalized_texts[start : start + batch_size]
+        encoded = tokenize_texts(
+            batch_texts,
+            setup.tokenizer,
+            max_length=128,
+        ).to(setup.device)
+        with torch.no_grad():
+            outputs = cast(SequenceClassifierOutput, setup.model(**encoded))
+        probabilities = _probabilities_from_logits(outputs.logits, len(batch_texts))
+        labels = probabilities.argmax(dim=1)
+        probability_rows = np.asarray(
+            probabilities.detach().cpu().numpy(), dtype=np.float64
+        )
+        for text, label, row in zip(batch_texts, labels.tolist(), probability_rows):
+            predictions.append(
+                SentimentPrediction(
+                    text=text,
+                    prediction=int(label),
+                    probabilities=row.copy(),
+                )
+            )
+    return tuple(predictions)
 
 
 def validate_fine_tuned_model_artifact(directory: Path) -> Path:
@@ -263,3 +312,42 @@ def _validate_loaded_binary_head(model: PreTrainedModel) -> None:
         raise FineTunedArtifactError(
             "Loaded fine-tuned model must have a binary SST-2 classification head"
         )
+
+
+def _normalize_prediction_texts(texts: str | Sequence[str]) -> tuple[str, ...]:
+    """Accept a scalar text or a non-empty ordered sequence of valid texts."""
+
+    normalized = (texts,) if isinstance(texts, str) else tuple(texts)
+    if not normalized:
+        raise ValueError("texts must contain at least one item")
+    if not all(isinstance(text, str) and text.strip() for text in normalized):
+        raise ValueError("texts must contain only non-empty strings")
+    return normalized
+
+
+def _validate_batch_size(batch_size: int) -> None:
+    """Reject invalid public batch sizes before tokenization."""
+
+    if isinstance(batch_size, bool) or not isinstance(batch_size, int):
+        raise TypeError("batch_size must be an integer")
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+
+
+def _probabilities_from_logits(logits: object, batch_size: int) -> torch.Tensor:
+    """Validate binary logits and convert them to finite probability rows."""
+
+    if not isinstance(logits, torch.Tensor):
+        raise TypeError("Fine-tuned logits must be a tensor")
+    if logits.ndim != 2 or logits.shape != (batch_size, NUM_SENTIMENT_LABELS):
+        raise ValueError("Fine-tuned logits must have shape [batch, 2]")
+    if not torch.isfinite(logits).all():
+        raise ValueError("Fine-tuned logits must contain only finite values")
+
+    probabilities = torch.softmax(logits, dim=1)
+    if not torch.isfinite(probabilities).all() or not torch.allclose(
+        probabilities.sum(dim=1),
+        torch.ones(batch_size, device=probabilities.device, dtype=probabilities.dtype),
+    ):
+        raise ValueError("Fine-tuned probabilities must be finite and sum to one")
+    return probabilities

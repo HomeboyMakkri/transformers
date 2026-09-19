@@ -331,10 +331,10 @@ Work on one item per request. For each item, read its matching `tasks/dayN.md` s
 
 ### D6-03 — Fine-tuned prediction API
 
-- [ ] Implement typed `predict_fine_tuned` logic for one string or an ordered
+- [x] Implement typed `predict_fine_tuned` logic for one string or an ordered
   text sequence, using batched tokenization, truncation, `max_length=128`,
   device transfer, `model.eval()`, and `torch.no_grad()`.
-- [ ] Convert logits `[batch, 2]` into probabilities in label order `[0, 1]`
+- [x] Convert logits `[batch, 2]` into probabilities in label order `[0, 1]`
   with softmax and predictions `[batch]` with `argmax(dim=1)`; preserve the
   original text and order in the returned records.
 - **Done when:** every input produces exactly one binary prediction and a
