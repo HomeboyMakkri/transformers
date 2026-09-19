@@ -13,10 +13,15 @@ from transformers import PreTrainedModel, PreTrainedTokenizerBase
 from transformers_learning import comparison
 from transformers_learning.baseline import FrozenEmbeddingDataset
 from transformers_learning.comparison import (
+    DAY6_EXAMPLE_TEXTS,
     Day6ArtifactInputs,
     FineTunedArtifactError,
     FineTunedInferenceSetup,
     FrozenBaselineSetup,
+    SentimentPrediction,
+    build_example_comparison_table,
+    compare_example_predictions,
+    compare_five_examples,
     get_day6_artifact_inputs,
     load_fine_tuned_inference,
     predict_baseline,
@@ -476,3 +481,101 @@ def test_predict_baseline_rejects_invalid_features_and_probabilities(
 
     with pytest.raises(ValueError, match=message):
         predict_baseline(["first", "second"], setup)
+
+
+def test_compare_five_examples_builds_aligned_display_table(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    received: dict[str, object] = {}
+    fine_tuned_setup = cast(FineTunedInferenceSetup, object())
+    baseline_setup = cast(FrozenBaselineSetup, object())
+
+    def fake_fine_tuned(
+        texts: tuple[str, ...],
+        setup: FineTunedInferenceSetup,
+        batch_size: int,
+    ) -> tuple[SentimentPrediction, ...]:
+        received["fine_tuned"] = (texts, setup, batch_size)
+        return tuple(
+            SentimentPrediction(
+                text=text,
+                prediction=index % 2,
+                probabilities=np.array([0.8, 0.2]),
+            )
+            for index, text in enumerate(texts)
+        )
+
+    def fake_baseline(
+        texts: tuple[str, ...],
+        setup: FrozenBaselineSetup,
+        batch_size: int,
+    ) -> tuple[SentimentPrediction, ...]:
+        received["baseline"] = (texts, setup, batch_size)
+        return tuple(
+            SentimentPrediction(
+                text=text,
+                prediction=0 if index != 1 else 1,
+                probabilities=np.array([0.3, 0.7]),
+            )
+            for index, text in enumerate(texts)
+        )
+
+    monkeypatch.setattr(comparison, "predict_fine_tuned", fake_fine_tuned)
+    monkeypatch.setattr(comparison, "predict_baseline", fake_baseline)
+
+    comparisons = compare_five_examples(
+        fine_tuned_setup,
+        baseline_setup,
+        batch_size=3,
+    )
+    table = build_example_comparison_table(comparisons)
+
+    assert received == {
+        "fine_tuned": (DAY6_EXAMPLE_TEXTS, fine_tuned_setup, 3),
+        "baseline": (DAY6_EXAMPLE_TEXTS, baseline_setup, 3),
+    }
+    assert [comparison.text for comparison in comparisons] == list(DAY6_EXAMPLE_TEXTS)
+    assert [comparison.predictions_agree for comparison in comparisons] == [True, True, True, False, True]
+    assert table.columns.tolist() == [
+        "text",
+        "fine_tuned_prediction",
+        "fine_tuned_probabilities",
+        "baseline_prediction",
+        "baseline_probabilities",
+        "predictions_agree",
+    ]
+    assert table["text"].tolist() == list(DAY6_EXAMPLE_TEXTS)
+    assert table["fine_tuned_probabilities"].tolist() == [(0.8, 0.2)] * 5
+    assert table["baseline_probabilities"].tolist() == [(0.3, 0.7)] * 5
+
+
+def test_compare_example_predictions_rejects_misaligned_model_records(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_fine_tuned(*args: object, **kwargs: object) -> tuple[SentimentPrediction, ...]:
+        return (
+            SentimentPrediction(
+                text="wrong text",
+                prediction=0,
+                probabilities=np.array([0.5, 0.5]),
+            ),
+        )
+
+    def fake_baseline(*args: object, **kwargs: object) -> tuple[SentimentPrediction, ...]:
+        return (
+            SentimentPrediction(
+                text="expected text",
+                prediction=0,
+                probabilities=np.array([0.5, 0.5]),
+            ),
+        )
+
+    monkeypatch.setattr(comparison, "predict_fine_tuned", fake_fine_tuned)
+    monkeypatch.setattr(comparison, "predict_baseline", fake_baseline)
+
+    with pytest.raises(ValueError, match="preserve input order"):
+        compare_example_predictions(
+            "expected text",
+            cast(FineTunedInferenceSetup, object()),
+            cast(FrozenBaselineSetup, object()),
+        )

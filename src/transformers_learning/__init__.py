@@ -13,12 +13,17 @@ from .baseline import (
     train_logistic_regression_on_frozen_embeddings,
 )
 from .comparison import (
+    DAY6_EXAMPLE_TEXTS,
     ComparisonDataset,
     Day6ArtifactInputs,
+    ExampleComparison,
     FineTunedArtifactError,
     FineTunedInferenceSetup,
     FrozenBaselineSetup,
     SentimentPrediction,
+    build_example_comparison_table,
+    compare_example_predictions,
+    compare_five_examples,
     get_day6_artifact_inputs,
     load_fine_tuned_inference,
     predict_baseline,
@@ -93,6 +98,7 @@ from .tokenization import (
 )
 
 __all__ = [
+    "DAY6_EXAMPLE_TEXTS",
     "DEFAULT_BATCH_SIZE",
     "DEFAULT_FINE_TUNED_MODEL_DIRECTORY",
     "DEFAULT_FINE_TUNED_RESULTS_PATH",
@@ -111,6 +117,7 @@ __all__ = [
     "BaselineEvaluation",
     "ComparisonDataset",
     "Day6ArtifactInputs",
+    "ExampleComparison",
     "FineTunedArtifactError",
     "FineTunedInferenceSetup",
     "FineTuningEpochMetrics",
@@ -133,6 +140,9 @@ __all__ = [
     "TokenizerInfo",
     "ValidationEvaluation",
     "adapt_sst2_split",
+    "build_example_comparison_table",
+    "compare_example_predictions",
+    "compare_five_examples",
     "create_fine_tuning_optimizer",
     "create_sentiment_dataloaders",
     "ensure_sst2_train_data",

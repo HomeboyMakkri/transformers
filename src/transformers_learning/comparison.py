@@ -37,6 +37,13 @@ _MODEL_WEIGHT_FILENAMES = (
     "model.safetensors.index.json",
     "pytorch_model.bin.index.json",
 )
+DAY6_EXAMPLE_TEXTS = (
+    "This movie was absolutely fantastic!",
+    "Terrible, waste of my time.",
+    "It was okay, nothing special.",
+    "Best film I've seen this year!",
+    "Boring and too long.",
+)
 
 
 class FineTunedArtifactError(ValueError):
@@ -84,6 +91,16 @@ class SentimentPrediction:
     text: str
     prediction: int
     probabilities: npt.NDArray[np.float64]
+
+
+@dataclass(frozen=True)
+class ExampleComparison:
+    """Aligned predictions from both Day 6 paths for one illustrative text."""
+
+    text: str
+    fine_tuned: SentimentPrediction
+    baseline: SentimentPrediction
+    predictions_agree: bool
 
 
 def prepare_comparison_dataset(dataframe: pd.DataFrame) -> ComparisonDataset:
@@ -254,6 +271,86 @@ def predict_baseline(
     )
 
 
+def compare_five_examples(
+    fine_tuned_setup: FineTunedInferenceSetup,
+    baseline_setup: FrozenBaselineSetup,
+    batch_size: int = 32,
+) -> tuple[ExampleComparison, ...]:
+    """Run both prediction paths on the five fixed Day 6 example sentences."""
+
+    return compare_example_predictions(
+        DAY6_EXAMPLE_TEXTS,
+        fine_tuned_setup,
+        baseline_setup,
+        batch_size=batch_size,
+    )
+
+
+def compare_example_predictions(
+    texts: str | Sequence[str],
+    fine_tuned_setup: FineTunedInferenceSetup,
+    baseline_setup: FrozenBaselineSetup,
+    batch_size: int = 32,
+) -> tuple[ExampleComparison, ...]:
+    """Pair two prediction paths without treating selected examples as metrics."""
+
+    normalized_texts = _normalize_prediction_texts(texts)
+    fine_tuned_predictions = predict_fine_tuned(
+        normalized_texts,
+        fine_tuned_setup,
+        batch_size=batch_size,
+    )
+    baseline_predictions = predict_baseline(
+        normalized_texts,
+        baseline_setup,
+        batch_size=batch_size,
+    )
+    if len(fine_tuned_predictions) != len(normalized_texts) or len(
+        baseline_predictions
+    ) != len(normalized_texts):
+        raise ValueError("Example predictions must align with every input text")
+
+    comparisons: list[ExampleComparison] = []
+    for text, fine_tuned, baseline in zip(
+        normalized_texts,
+        fine_tuned_predictions,
+        baseline_predictions,
+    ):
+        _validate_example_prediction(fine_tuned, text, "Fine-tuned")
+        _validate_example_prediction(baseline, text, "Baseline")
+        comparisons.append(
+            ExampleComparison(
+                text=text,
+                fine_tuned=fine_tuned,
+                baseline=baseline,
+                predictions_agree=fine_tuned.prediction == baseline.prediction,
+            )
+        )
+    return tuple(comparisons)
+
+
+def build_example_comparison_table(
+    comparisons: Sequence[ExampleComparison],
+) -> pd.DataFrame:
+    """Return a display-ready table of labels, probabilities, and agreement."""
+
+    return pd.DataFrame(
+        {
+            "text": comparison.text,
+            "fine_tuned_prediction": comparison.fine_tuned.prediction,
+            "fine_tuned_probabilities": tuple(
+                float(value) for value in comparison.fine_tuned.probabilities
+            ),
+            "baseline_prediction": comparison.baseline.prediction,
+            "baseline_probabilities": tuple(
+                float(value) for value in comparison.baseline.probabilities
+            ),
+            "predictions_agree": comparison.predictions_agree,
+        }
+        for comparison in comparisons
+    )
+
+
 def validate_fine_tuned_model_artifact(directory: Path) -> Path:
     """Require a local, binary Day 5 model and tokenizer artifact directory."""
 
@@ -402,6 +499,24 @@ def _validate_prediction_features(features: npt.NDArray[Any], count: int) -> Non
         raise ValueError("Frozen embeddings must have shape [batch, hidden]")
     if not np.issubdtype(features.dtype, np.number) or not np.isfinite(features).all():
         raise ValueError("Frozen embeddings must contain only finite numeric values")
+
+
+def _validate_example_prediction(
+    prediction: SentimentPrediction,
+    expected_text: str,
+    model_name: str,
+) -> None:
+    """Check one predictor record before it is paired into a comparison table."""
+
+    if prediction.text != expected_text:
+        raise ValueError(f"{model_name} prediction text does not preserve input order")
+    if prediction.prediction not in (0, 1):
+        raise ValueError(f"{model_name} prediction must use SST-2 labels 0 and 1")
+    probabilities = prediction.probabilities
+    if probabilities.shape != (NUM_SENTIMENT_LABELS,):
+        raise ValueError(f"{model_name} probabilities must have shape [2]")
+    if not np.isfinite(probabilities).all() or not np.isclose(probabilities.sum(), 1.0):
+        raise ValueError(f"{model_name} probabilities must be finite and sum to one")
 
 
 def _validate_baseline_labels(predictions: object, count: int) -> npt.NDArray[np.int64]:

@@ -360,10 +360,12 @@ Work on one item per request. For each item, read its matching `tasks/dayN.md` s
 
 ### D6-05 — Five-example inference comparison
 
-- [ ] Run both prediction APIs on the five English examples from
+- [x] **Status: implementation complete; real example output requires the
+  ignored Day 5 artifact and a separate approved integration run.**
+- [x] Run both prediction APIs on the five English examples from
   `tasks/day6.md` and display labels, probabilities, and whether predictions
   agree.
-- [ ] Explain that the neutral-sounding example is still mapped into the
+- [x] Explain that the neutral-sounding example is still mapped into the
   binary SST-2 label space and that agreement or confidence on five selected
   sentences is not an evaluation metric.
 - **Done when:** the small example makes both text-to-prediction paths and
