@@ -298,10 +298,10 @@ Work on one item per request. For each item, read its matching `tasks/dayN.md` s
 
 ### D6-01 — Shared comparison dataset and artifact boundaries
 
-- [ ] Recreate the deterministic outer 80/20 SST-2 row split from the same
+- [x] Recreate the deterministic outer 80/20 SST-2 row split from the same
   validated source-row order used in Days 4–5; select outer-train and
   outer-test rows by the preserved indices.
-- [ ] Define the Day 6 artifact inputs: the saved epoch-3
+- [x] Define the Day 6 artifact inputs: the saved epoch-3
   `fine_tuned_model/` directory and a freshly recreated Day 4 baseline. Do not
   load or add `vectorizer.pkl` or a persisted baseline classifier.
 - **Done when:** the comparison test texts and labels match the Day 4/5 outer

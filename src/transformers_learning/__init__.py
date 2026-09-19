@@ -11,6 +11,14 @@ from .baseline import (
     split_frozen_embedding_dataset,
     train_logistic_regression,
 )
+from .comparison import (
+    ComparisonDataset,
+    Day6ArtifactInputs,
+    FineTunedArtifactError,
+    get_day6_artifact_inputs,
+    prepare_comparison_dataset,
+    validate_fine_tuned_model_artifact,
+)
 from .datasets import (
     LABEL_COLUMN,
     SST2_LABEL_MAP,
@@ -92,6 +100,9 @@ __all__ = [
     "SST2_METADATA",
     "TEXT_COLUMN",
     "BaselineEvaluation",
+    "ComparisonDataset",
+    "Day6ArtifactInputs",
+    "FineTunedArtifactError",
     "FineTuningEpochMetrics",
     "FrozenEmbeddingDataset",
     "FrozenEmbeddingSplit",
@@ -119,11 +130,13 @@ __all__ = [
     "extract_attention_matrix",
     "extract_first_token_representation",
     "get_class_counts",
+    "get_day6_artifact_inputs",
     "get_embeddings",
     "inspect_tokenizer",
     "load_model",
     "load_sequence_classifier",
     "load_tokenizer",
+    "prepare_comparison_dataset",
     "prepare_frozen_embedding_dataset",
     "run_fine_tuning",
     "save_baseline_results",
@@ -137,6 +150,7 @@ __all__ = [
     "tokenize_texts",
     "train_epoch",
     "train_logistic_regression",
+    "validate_fine_tuned_model_artifact",
     "validate_sentiment_dataframe",
     "visualize_attention",
 ]
