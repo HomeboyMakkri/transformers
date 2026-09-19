@@ -375,9 +375,11 @@ Work on one item per request. For each item, read its matching `tasks/dayN.md` s
 
 ### D6-06 — Paired held-out metrics
 
-- [ ] Predict every shared outer-test row with both models in identical order,
+- [x] **Status: implementation complete; real held-out metrics require a
+  separate approved data/model integration run.**
+- [x] Predict every shared outer-test row with both models in identical order,
   then validate one-to-one alignment with the same labels before evaluation.
-- [ ] Compute `classification_report`, accuracy, and macro F1 for each model
+- [x] Compute `classification_report`, accuracy, and macro F1 for each model
   with label order `[0, 1]`; report signed absolute fine-tuned-minus-baseline
   deltas and guard any optional relative F1 calculation against division by
   zero.

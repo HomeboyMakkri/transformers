@@ -11,6 +11,7 @@ import numpy.typing as npt
 import pandas as pd
 import torch
 from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, classification_report, f1_score
 from transformers import (
     AutoModelForSequenceClassification,
     AutoTokenizer,
@@ -23,7 +24,12 @@ from .baseline import (
     prepare_frozen_embedding_dataset,
     train_logistic_regression_on_frozen_embeddings,
 )
-from .datasets import LABEL_COLUMN, TEXT_COLUMN, validate_sentiment_dataframe
+from .datasets import (
+    LABEL_COLUMN,
+    SST2_LABEL_MAP,
+    TEXT_COLUMN,
+    validate_sentiment_dataframe,
+)
 from .fine_tuning import DEFAULT_FINE_TUNED_MODEL_DIRECTORY, NUM_SENTIMENT_LABELS
 from .modeling import get_embeddings
 from .splitting import OuterSentimentSplit, split_outer_sentiment_indices
@@ -101,6 +107,29 @@ class ExampleComparison:
     fine_tuned: SentimentPrediction
     baseline: SentimentPrediction
     predictions_agree: bool
+
+
+@dataclass(frozen=True)
+class HeldOutModelEvaluation:
+    """One model's ordered holdout predictions and aggregate binary metrics."""
+
+    predictions: npt.NDArray[np.int64]
+    classification_report: str
+    class_support: dict[int, int]
+    accuracy: float
+    macro_f1: float
+
+
+@dataclass(frozen=True)
+class PairedHoldoutEvaluation:
+    """Metrics for two models evaluated on the identical ordered holdout."""
+
+    labels: npt.NDArray[np.int64]
+    fine_tuned: HeldOutModelEvaluation
+    baseline: HeldOutModelEvaluation
+    accuracy_delta: float
+    macro_f1_delta: float
+    relative_macro_f1_delta: float | None
 
 
 def prepare_comparison_dataset(dataframe: pd.DataFrame) -> ComparisonDataset:
@@ -351,6 +380,55 @@ def build_example_comparison_table(
     )
 
 
+def evaluate_paired_holdout(
+    comparison: ComparisonDataset,
+    fine_tuned_setup: FineTunedInferenceSetup,
+    baseline_setup: FrozenBaselineSetup,
+    batch_size: int = 32,
+) -> PairedHoldoutEvaluation:
+    """Evaluate both fixed model paths on the same ordered outer-test rows."""
+
+    texts = tuple(str(text) for text in comparison.outer_test[TEXT_COLUMN])
+    labels = np.asarray(comparison.outer_test[LABEL_COLUMN].to_numpy(), dtype=np.int64)
+    _validate_holdout_labels(labels, len(texts))
+    fine_tuned_predictions = predict_fine_tuned(
+        texts,
+        fine_tuned_setup,
+        batch_size=batch_size,
+    )
+    baseline_predictions = predict_baseline(
+        texts,
+        baseline_setup,
+        batch_size=batch_size,
+    )
+    fine_tuned_labels = _extract_aligned_prediction_labels(
+        fine_tuned_predictions,
+        texts,
+        "Fine-tuned",
+    )
+    baseline_labels = _extract_aligned_prediction_labels(
+        baseline_predictions,
+        texts,
+        "Baseline",
+    )
+    fine_tuned_evaluation = _evaluate_holdout_predictions(labels, fine_tuned_labels)
+    baseline_evaluation = _evaluate_holdout_predictions(labels, baseline_labels)
+    macro_f1_delta = fine_tuned_evaluation.macro_f1 - baseline_evaluation.macro_f1
+    relative_macro_f1_delta = (
+        None
+        if baseline_evaluation.macro_f1 == 0.0
+        else macro_f1_delta / baseline_evaluation.macro_f1
+    )
+    return PairedHoldoutEvaluation(
+        labels=labels.copy(),
+        fine_tuned=fine_tuned_evaluation,
+        baseline=baseline_evaluation,
+        accuracy_delta=fine_tuned_evaluation.accuracy - baseline_evaluation.accuracy,
+        macro_f1_delta=macro_f1_delta,
+        relative_macro_f1_delta=relative_macro_f1_delta,
+    )
+
+
 def validate_fine_tuned_model_artifact(directory: Path) -> Path:
     """Require a local, binary Day 5 model and tokenizer artifact directory."""
 
@@ -517,6 +595,69 @@ def _validate_example_prediction(
         raise ValueError(f"{model_name} probabilities must have shape [2]")
     if not np.isfinite(probabilities).all() or not np.isclose(probabilities.sum(), 1.0):
         raise ValueError(f"{model_name} probabilities must be finite and sum to one")
+
+
+def _extract_aligned_prediction_labels(
+    predictions: Sequence[SentimentPrediction],
+    texts: Sequence[str],
+    model_name: str,
+) -> npt.NDArray[np.int64]:
+    """Ensure prediction records have one valid row for every ordered text."""
+
+    if len(predictions) != len(texts):
+        raise ValueError(f"{model_name} predictions must align with held-out texts")
+    labels: list[int] = []
+    for expected_text, prediction in zip(texts, predictions):
+        _validate_example_prediction(prediction, expected_text, model_name)
+        labels.append(prediction.prediction)
+    return np.asarray(labels, dtype=np.int64)
+
+
+def _validate_holdout_labels(labels: npt.NDArray[np.int64], count: int) -> None:
+    """Require one binary held-out label for every shared outer-test text."""
+
+    if labels.ndim != 1 or labels.shape[0] != count:
+        raise ValueError("Held-out labels must align with held-out texts")
+    if not np.all(np.isin(labels, [0, 1])):
+        raise ValueError("Held-out labels must use only SST-2 labels 0 and 1")
+
+
+def _evaluate_holdout_predictions(
+    labels: npt.NDArray[np.int64],
+    predictions: npt.NDArray[np.int64],
+) -> HeldOutModelEvaluation:
+    """Compute fixed-label held-out metrics without modifying either model."""
+
+    if predictions.shape != labels.shape:
+        raise ValueError("Held-out predictions must align with held-out labels")
+    report = cast(
+        str,
+        classification_report(
+            labels,
+            predictions,
+            labels=[0, 1],
+            target_names=[SST2_LABEL_MAP[0], SST2_LABEL_MAP[1]],
+            zero_division=cast(Any, 0),
+        ),
+    )
+    accuracy = float(accuracy_score(labels, predictions))
+    macro_f1 = float(
+        f1_score(
+            labels,
+            predictions,
+            labels=[0, 1],
+            average="macro",
+            zero_division=cast(Any, 0),
+        )
+    )
+    class_support = {label: int(np.count_nonzero(labels == label)) for label in (0, 1)}
+    return HeldOutModelEvaluation(
+        predictions=predictions.copy(),
+        classification_report=report,
+        class_support=class_support,
+        accuracy=accuracy,
+        macro_f1=macro_f1,
+    )
 
 
 def _validate_baseline_labels(predictions: object, count: int) -> npt.NDArray[np.int64]:

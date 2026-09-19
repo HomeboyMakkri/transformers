@@ -22,6 +22,7 @@ from transformers_learning.comparison import (
     build_example_comparison_table,
     compare_example_predictions,
     compare_five_examples,
+    evaluate_paired_holdout,
     get_day6_artifact_inputs,
     load_fine_tuned_inference,
     predict_baseline,
@@ -578,4 +579,132 @@ def test_compare_example_predictions_rejects_misaligned_model_records(
             "expected text",
             cast(FineTunedInferenceSetup, object()),
             cast(FrozenBaselineSetup, object()),
+        )
+
+
+def test_evaluate_paired_holdout_reports_support_metrics_and_signed_deltas(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    comparison_dataset = prepare_comparison_dataset(make_sentiment_dataframe())
+    labels = comparison_dataset.outer_test["label"].to_numpy(dtype=np.int64)
+    received: dict[str, object] = {}
+
+    def make_predictions(
+        texts: tuple[str, ...],
+        predictions: np.ndarray,
+    ) -> tuple[SentimentPrediction, ...]:
+        return tuple(
+            SentimentPrediction(
+                text=text,
+                prediction=int(prediction),
+                probabilities=np.array([0.5, 0.5]),
+            )
+            for text, prediction in zip(texts, predictions)
+        )
+
+    def fake_fine_tuned(
+        texts: tuple[str, ...],
+        setup: FineTunedInferenceSetup,
+        batch_size: int,
+    ) -> tuple[SentimentPrediction, ...]:
+        received["fine_tuned"] = (texts, setup, batch_size)
+        return make_predictions(texts, labels)
+
+    def fake_baseline(
+        texts: tuple[str, ...],
+        setup: FrozenBaselineSetup,
+        batch_size: int,
+    ) -> tuple[SentimentPrediction, ...]:
+        received["baseline"] = (texts, setup, batch_size)
+        return make_predictions(texts, np.zeros_like(labels))
+
+    monkeypatch.setattr(comparison, "predict_fine_tuned", fake_fine_tuned)
+    monkeypatch.setattr(comparison, "predict_baseline", fake_baseline)
+    fine_tuned_setup = cast(FineTunedInferenceSetup, object())
+    baseline_setup = cast(FrozenBaselineSetup, object())
+
+    evaluation = evaluate_paired_holdout(
+        comparison_dataset,
+        fine_tuned_setup,
+        baseline_setup,
+        batch_size=3,
+    )
+
+    expected_texts = tuple(comparison_dataset.outer_test["text"])
+    assert received == {
+        "fine_tuned": (expected_texts, fine_tuned_setup, 3),
+        "baseline": (expected_texts, baseline_setup, 3),
+    }
+    assert evaluation.labels.tolist() == labels.tolist()
+    assert evaluation.fine_tuned.class_support == {0: 2, 1: 2}
+    assert "negative" in evaluation.fine_tuned.classification_report
+    assert "positive" in evaluation.fine_tuned.classification_report
+    assert evaluation.fine_tuned.accuracy == pytest.approx(1.0)
+    assert evaluation.fine_tuned.macro_f1 == pytest.approx(1.0)
+    assert evaluation.baseline.accuracy == pytest.approx(0.5)
+    assert evaluation.baseline.macro_f1 == pytest.approx(1.0 / 3.0)
+    assert evaluation.accuracy_delta == pytest.approx(0.5)
+    assert evaluation.macro_f1_delta == pytest.approx(2.0 / 3.0)
+    assert evaluation.relative_macro_f1_delta == pytest.approx(2.0)
+
+
+def test_evaluate_paired_holdout_guards_zero_f1_and_rejects_misalignment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    comparison_dataset = prepare_comparison_dataset(make_sentiment_dataframe())
+    labels = comparison_dataset.outer_test["label"].to_numpy(dtype=np.int64)
+
+    def make_predictions(
+        texts: tuple[str, ...],
+        predictions: np.ndarray,
+    ) -> tuple[SentimentPrediction, ...]:
+        return tuple(
+            SentimentPrediction(
+                text=text,
+                prediction=int(prediction),
+                probabilities=np.array([0.5, 0.5]),
+            )
+            for text, prediction in zip(texts, predictions)
+        )
+
+    monkeypatch.setattr(
+        comparison,
+        "predict_fine_tuned",
+        lambda texts, *args, **kwargs: make_predictions(texts, labels),
+    )
+    monkeypatch.setattr(
+        comparison,
+        "predict_baseline",
+        lambda texts, *args, **kwargs: make_predictions(texts, 1 - labels),
+    )
+    fine_tuned_setup = cast(FineTunedInferenceSetup, object())
+    baseline_setup = cast(FrozenBaselineSetup, object())
+
+    evaluation = evaluate_paired_holdout(
+        comparison_dataset,
+        fine_tuned_setup,
+        baseline_setup,
+    )
+
+    assert evaluation.baseline.macro_f1 == pytest.approx(0.0)
+    assert evaluation.relative_macro_f1_delta is None
+
+    monkeypatch.setattr(
+        comparison,
+        "predict_fine_tuned",
+        lambda texts, *args, **kwargs: (
+            SentimentPrediction(
+                text="out of order",
+                prediction=0,
+                probabilities=np.array([0.5, 0.5]),
+            ),
+        )
+        * len(texts),
+    )
+
+    with pytest.raises(ValueError, match="preserve input order"):
+        evaluate_paired_holdout(
+            comparison_dataset,
+            fine_tuned_setup,
+            baseline_setup,
         )
