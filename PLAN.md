@@ -294,7 +294,123 @@ Work on one item per request. For each item, read its matching `tasks/dayN.md` s
   the real notebook separately because it may require downloads and a long
   CPU/GPU training run.
 
+## Day 6 — Held-out inference and model comparison
+
+### D6-01 — Shared comparison dataset and artifact boundaries
+
+- [ ] Recreate the deterministic outer 80/20 SST-2 row split from the same
+  validated source-row order used in Days 4–5; select outer-train and
+  outer-test rows by the preserved indices.
+- [ ] Define the Day 6 artifact inputs: the saved epoch-3
+  `fine_tuned_model/` directory and a freshly recreated Day 4 baseline. Do not
+  load or add `vectorizer.pkl` or a persisted baseline classifier.
+- **Done when:** the comparison test texts and labels match the Day 4/5 outer
+  holdout exactly, and no outer-test row is available to baseline fitting or
+  model selection.
+- **Verify:** offline tests assert exact row identities and order, complete
+  train/test separation, and a clear failure when required fine-tuned
+  artifacts are absent or incompatible.
+
+### D6-02 — Recreate and load the two model paths
+
+- [ ] Recreate frozen embeddings for the outer-training rows and fit the fixed
+  Day 4 `LogisticRegression(max_iter=1000, n_jobs=-1)` only on those features;
+  use the shared base tokenizer and encoder in evaluation/no-gradient mode.
+- [ ] Reload the fine-tuned sequence classifier and tokenizer from
+  `fine_tuned_model/`, select its execution device, move the model there, and
+  set evaluation mode without performing further optimization.
+- **Done when:** both final inference paths are ready before the outer-test
+  metrics are inspected, with no fitted text vectorizer and no Day 6 training
+  of the fine-tuned classifier.
+- **Verify:** focused tests use fakes to prove the baseline fit receives only
+  outer-training features and the fine-tuned loader uses the local artifact,
+  binary head, selected device, and evaluation mode.
+
+### D6-03 — Fine-tuned prediction API
+
+- [ ] Implement typed `predict_fine_tuned` logic for one string or an ordered
+  text sequence, using batched tokenization, truncation, `max_length=128`,
+  device transfer, `model.eval()`, and `torch.no_grad()`.
+- [ ] Convert logits `[batch, 2]` into probabilities in label order `[0, 1]`
+  with softmax and predictions `[batch]` with `argmax(dim=1)`; preserve the
+  original text and order in the returned records.
+- **Done when:** every input produces exactly one binary prediction and a
+  finite two-class probability vector summing to one.
+- **Verify:** offline tests cover scalar/list input, multiple and partial
+  batches, order, tensor shapes, device/mode/gradient boundaries, empty input,
+  and malformed logits.
+
+### D6-04 — Frozen-baseline prediction API
+
+- [ ] Implement typed `predict_baseline` logic for the same raw-text interface,
+  deriving frozen first-token embeddings through the shared tokenizer/base
+  encoder and applying the recreated logistic-regression classifier.
+- [ ] Return predictions and `predict_proba` values in explicit label order
+  `[0, 1]`, preserving original text and input order without a separate
+  cleaning function or fitted vectorizer.
+- **Done when:** both predictors expose aligned result records with compatible
+  label and probability semantics despite their different internal data
+  flows.
+- **Verify:** offline tests mock embedding extraction and classification to
+  cover batching and order, feature/prediction alignment, encoder inference
+  boundaries, finite probabilities, and invalid outputs.
+
+### D6-05 — Five-example inference comparison
+
+- [ ] Run both prediction APIs on the five English examples from
+  `tasks/day6.md` and display labels, probabilities, and whether predictions
+  agree.
+- [ ] Explain that the neutral-sounding example is still mapped into the
+  binary SST-2 label space and that agreement or confidence on five selected
+  sentences is not an evaluation metric.
+- **Done when:** the small example makes both text-to-prediction paths and
+  their shared label mapping observable before full held-out inference.
+- **Verify:** test the comparison-table assembly offline; reserve real model
+  execution for the explicitly approved integration run.
+
+### D6-06 — Paired held-out metrics
+
+- [ ] Predict every shared outer-test row with both models in identical order,
+  then validate one-to-one alignment with the same labels before evaluation.
+- [ ] Compute `classification_report`, accuracy, and macro F1 for each model
+  with label order `[0, 1]`; report signed absolute fine-tuned-minus-baseline
+  deltas and guard any optional relative F1 calculation against division by
+  zero.
+- **Done when:** both approaches are compared on exactly the same examples and
+  macro F1 is clearly identified as the primary held-out metric.
+- **Verify:** offline tests use known predictions to check metric values,
+  class support, direction of deltas, alignment rejection, and the zero-F1
+  edge case.
+
+### D6-07 — Confusion matrices and comparison record
+
+- [ ] Build raw-count confusion matrices for both models with identical true
+  and predicted axes, explicit `negative`/`positive` labels, and class order
+  `[0, 1]`; save them as ignored PNG artifacts.
+- [ ] Write ignored `comparison_results.txt` with both models' macro F1 and
+  accuracy, signed deltas, and the required dataset/model/split/test-count and
+  artifact context.
+- **Done when:** the two plots are directly comparable and the result record
+  identifies the evaluated run without persisting models, embeddings, or
+  datasets.
+- **Verify:** use temporary paths to test matrix orientation, fixed label
+  order, file creation, result content, and refusal of inconsistent inputs.
+
+### D6-08 — Day 6 notebook walkthrough and review
+
+- [ ] Add a thin Day 6 notebook that calls reusable `src/` functions, first
+  compares the five small examples, then performs the paired outer-test
+  evaluation and displays both confusion matrices and metric deltas.
+- [ ] Explain both inference data flows, `eval()`/no-gradient behavior, the
+  shared holdout and leakage boundary, macro F1 versus accuracy, probability
+  interpretation, and why detailed error analysis remains Day 7 work.
+- **Done when:** the checkpoint in `tasks/day6.md` is satisfied for both
+  models and the comparison can be explained without reusable logic in
+  notebook cells.
+- **Verify:** run focused tests, Ruff, Pyright, and `git diff --check`; reload
+  real artifacts and execute the full holdout comparison only after warning
+  about model/data access, runtime, memory, and the required Day 5 artifact.
+
 ## Later backlog — detail only when reached
 
-- [ ] **Day 6:** compare both approaches on the same held-out data.
 - [ ] **Day 7:** analyze errors and build a small demo.

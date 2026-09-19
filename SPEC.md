@@ -6,8 +6,8 @@ Build a seven-day sentiment-analysis project while understanding tokenization, h
 
 ## Current scope
 
-Days 1–5 are specified below. Days 6–7 remain high-level until their
-requirements are discussed; later-day code is out of scope for now.
+Days 1–6 are specified below. Day 7 remains high-level until its requirements
+are discussed; later-day code is out of scope for now.
 
 ## Accepted decisions
 
@@ -166,6 +166,86 @@ requirements are discussed; later-day code is out of scope for now.
   paths to verify project behavior. Loading the real checkpoint and the full
   three-epoch run are separate integration checks requiring explicit warning
   about downloads, runtime, and compute resources.
+
+## Day 6 contract: held-out inference and model comparison
+
+### Comparison data and leakage boundary
+
+- Reuse the validated SST-2 source rows in their original order and reproduce
+  the shared stratified outer 80/20 split with `random_state=42`. The Day 6
+  test row identities, texts, labels, and order must match the holdout defined
+  for Days 4–5 exactly; do not create a new split from an arbitrary CSV.
+- The frozen-embedding baseline is recreated reproducibly during the Day 6
+  comparison: extract frozen `distilbert-base-uncased` features for the outer
+  training and test rows, then fit the fixed
+  `LogisticRegression(max_iter=1000, n_jobs=-1)` on outer-training features
+  only. Do not introduce the assignment's `vectorizer.pkl`: this project uses
+  Transformer embeddings rather than a fitted text vectorizer, and the Day 4
+  contract does not persist baseline model weights.
+- Reload the final epoch-3 classifier and tokenizer from the ignored
+  `fine_tuned_model/` directory. Do not train, tune, select a checkpoint, or
+  alter either approach after inspecting outer-test predictions or metrics.
+  Day 6 is evaluation only for the fine-tuned model.
+
+### Prediction contracts
+
+- Provide typed reusable `predict_fine_tuned` logic that accepts one string or
+  an ordered sequence of strings, tokenizes with truncation and
+  `max_length=128`, runs the classifier in `eval()` mode under
+  `torch.no_grad()`, and moves input tensors to the model device. Convert
+  logits `[batch, 2]` to probabilities with softmax and labels with
+  `argmax(dim=1)`.
+- Provide typed reusable `predict_baseline` logic that accepts the same raw
+  text interface, derives frozen first-token embeddings with the shared base
+  tokenizer and encoder, and applies the fitted logistic-regression
+  classifier. The encoder remains in `eval()` mode with gradients disabled;
+  `predict_proba` supplies the two-class probabilities.
+- Both prediction functions preserve input order and original text and return
+  one result per input with a binary integer prediction and finite class
+  probabilities in label order `[0, 1]`. Batch inference is preferred over a
+  one-forward-pass-per-text loop, and empty input or malformed output is
+  rejected explicitly.
+- Run both functions on the assignment's five small English examples before
+  full evaluation. The sentence `It was okay, nothing special.` is still
+  forced into the binary `negative`/`positive` label space; neither model has
+  a neutral class. Example agreement is illustrative and is not an accuracy
+  estimate.
+
+### Paired held-out evaluation
+
+- Generate predictions from both models for every shared outer-test row in
+  the same order. Verify prediction/label alignment before computing any
+  metric; neither model may receive a different subset or reordered labels.
+- For each model, report `classification_report` with class support, accuracy,
+  and macro F1 using explicit label order `[0, 1]`. Macro F1 remains the
+  primary comparison metric; accuracy is secondary.
+- Report signed absolute deltas as `fine_tuned - baseline` for macro F1 and
+  accuracy. A relative macro-F1 percentage may be reported only when baseline
+  macro F1 is nonzero and must not replace the absolute delta.
+- Build and save a raw-count confusion matrix for each model with the same
+  axes, class order, labels, and visual scale where practical. Use unambiguous
+  ignored artifact names such as `confusion_matrix_finetuned.png` and
+  `confusion_matrix_baseline.png`; rows are true labels and columns are
+  predicted labels.
+
+### Results, notebook, and verification
+
+- Save both models' accuracy and macro F1 plus the signed deltas and minimal
+  comparison context to ignored `comparison_results.txt`: checkpoint, dataset
+  ID, label mapping, outer split parameters, test sample count, and artifact
+  names. Do not treat this text file as an experiment tracker or commit model,
+  dataset, plot, or result artifacts.
+- Keep reusable prediction, paired evaluation, plotting, and persistence logic
+  in `src/transformers_learning/`. The Day 6 notebook contains explanations,
+  the five small examples, and calls to that logic; detailed error analysis is
+  deferred to Day 7.
+- Fast offline tests use fake tokenizers, encoders, classifiers, and temporary
+  paths to verify mode and gradient boundaries, device movement, order and
+  shape invariants, probability semantics, exact paired metric inputs, plot
+  creation, and result formatting. Reloading real artifacts and evaluating the
+  full shared holdout are separate integration checks requiring an explicit
+  warning about downloads, runtime, memory, and the availability of the Day 5
+  artifact.
 
 ## Project invariants
 
