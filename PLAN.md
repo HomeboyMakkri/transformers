@@ -345,10 +345,10 @@ Work on one item per request. For each item, read its matching `tasks/dayN.md` s
 
 ### D6-04 — Frozen-baseline prediction API
 
-- [ ] Implement typed `predict_baseline` logic for the same raw-text interface,
+- [x] Implement typed `predict_baseline` logic for the same raw-text interface,
   deriving frozen first-token embeddings through the shared tokenizer/base
   encoder and applying the recreated logistic-regression classifier.
-- [ ] Return predictions and `predict_proba` values in explicit label order
+- [x] Return predictions and `predict_proba` values in explicit label order
   `[0, 1]`, preserving original text and input order without a separate
   cleaning function or fitted vectorizer.
 - **Done when:** both predictors expose aligned result records with compatible

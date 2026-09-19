@@ -25,6 +25,7 @@ from .baseline import (
 )
 from .datasets import LABEL_COLUMN, TEXT_COLUMN, validate_sentiment_dataframe
 from .fine_tuning import DEFAULT_FINE_TUNED_MODEL_DIRECTORY, NUM_SENTIMENT_LABELS
+from .modeling import get_embeddings
 from .splitting import OuterSentimentSplit, split_outer_sentiment_indices
 from .tokenization import tokenize_texts
 
@@ -212,6 +213,47 @@ def predict_fine_tuned(
     return tuple(predictions)
 
 
+def predict_baseline(
+    texts: str | Sequence[str],
+    setup: FrozenBaselineSetup,
+    batch_size: int = 32,
+) -> tuple[SentimentPrediction, ...]:
+    """Predict binary sentiment through frozen embeddings and Logistic Regression."""
+
+    normalized_texts = _normalize_prediction_texts(texts)
+    _validate_batch_size(batch_size)
+    features = np.asarray(
+        get_embeddings(
+            normalized_texts,
+            setup.tokenizer,
+            setup.encoder,
+            batch_size=batch_size,
+        )
+    )
+    _validate_prediction_features(features, len(normalized_texts))
+    predictions = _validate_baseline_labels(
+        setup.classifier.predict(features),
+        len(normalized_texts),
+    )
+    probabilities = _baseline_probabilities_in_label_order(
+        setup.classifier,
+        features,
+        len(normalized_texts),
+    )
+    return tuple(
+        SentimentPrediction(
+            text=text,
+            prediction=int(prediction),
+            probabilities=probability.copy(),
+        )
+        for text, prediction, probability in zip(
+            normalized_texts,
+            predictions,
+            probabilities,
+        )
+    )
+
+
 def validate_fine_tuned_model_artifact(directory: Path) -> Path:
     """Require a local, binary Day 5 model and tokenizer artifact directory."""
 
@@ -351,3 +393,47 @@ def _probabilities_from_logits(logits: object, batch_size: int) -> torch.Tensor:
     ):
         raise ValueError("Fine-tuned probabilities must be finite and sum to one")
     return probabilities
+
+
+def _validate_prediction_features(features: npt.NDArray[Any], count: int) -> None:
+    """Require finite aligned frozen feature rows before classifier inference."""
+
+    if features.ndim != 2 or features.shape[0] != count or features.shape[1] == 0:
+        raise ValueError("Frozen embeddings must have shape [batch, hidden]")
+    if not np.issubdtype(features.dtype, np.number) or not np.isfinite(features).all():
+        raise ValueError("Frozen embeddings must contain only finite numeric values")
+
+
+def _validate_baseline_labels(predictions: object, count: int) -> npt.NDArray[np.int64]:
+    """Validate one binary classifier label per input text."""
+
+    values = np.asarray(predictions)
+    if values.ndim != 1 or values.shape[0] != count:
+        raise ValueError("Baseline predictions must align with input texts")
+    if not np.all(np.isin(values, [0, 1])):
+        raise ValueError("Baseline predictions must use only SST-2 labels 0 and 1")
+    return np.asarray(values, dtype=np.int64)
+
+
+def _baseline_probabilities_in_label_order(
+    classifier: LogisticRegression,
+    features: npt.NDArray[Any],
+    count: int,
+) -> npt.NDArray[np.float64]:
+    """Validate ``predict_proba`` and reorder columns to SST-2 labels ``[0, 1]``."""
+
+    raw_probabilities = np.asarray(classifier.predict_proba(features), dtype=np.float64)
+    if raw_probabilities.shape != (count, NUM_SENTIMENT_LABELS):
+        raise ValueError("Baseline probabilities must have shape [batch, 2]")
+    if not np.isfinite(raw_probabilities).all() or np.any(raw_probabilities < 0.0):
+        raise ValueError("Baseline probabilities must be finite and non-negative")
+    if not np.allclose(raw_probabilities.sum(axis=1), np.ones(count)):
+        raise ValueError("Baseline probabilities must sum to one")
+
+    classes = np.asarray(classifier.classes_)
+    if classes.ndim != 1 or classes.shape[0] != NUM_SENTIMENT_LABELS:
+        raise ValueError("Baseline classifier must expose two class labels")
+    if set(classes.tolist()) != {0, 1}:
+        raise ValueError("Baseline classifier classes must be SST-2 labels 0 and 1")
+    label_columns = [int(np.flatnonzero(classes == label)[0]) for label in (0, 1)]
+    return raw_probabilities[:, label_columns]

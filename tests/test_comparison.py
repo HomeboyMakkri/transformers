@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 import torch
+from sklearn.linear_model import LogisticRegression
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
 
 from transformers_learning import comparison
@@ -15,8 +16,10 @@ from transformers_learning.comparison import (
     Day6ArtifactInputs,
     FineTunedArtifactError,
     FineTunedInferenceSetup,
+    FrozenBaselineSetup,
     get_day6_artifact_inputs,
     load_fine_tuned_inference,
+    predict_baseline,
     predict_fine_tuned,
     prepare_comparison_dataset,
     recreate_frozen_baseline,
@@ -373,3 +376,103 @@ def test_predict_fine_tuned_rejects_empty_input_and_malformed_logits(
 
     with pytest.raises(ValueError, match=message):
         predict_fine_tuned(texts, setup)
+
+
+def test_predict_baseline_preserves_order_and_reorders_probability_columns(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    received: dict[str, object] = {}
+    tokenizer = cast(PreTrainedTokenizerBase, object())
+    encoder = cast(PreTrainedModel, object())
+
+    class FakeClassifier:
+        classes_ = np.array([1, 0], dtype=np.int64)
+
+        def predict(self, features: np.ndarray) -> np.ndarray:
+            received["prediction_features"] = features
+            return np.array([1, 0, 1], dtype=np.int64)
+
+        def predict_proba(self, features: np.ndarray) -> np.ndarray:
+            received["probability_features"] = features
+            return np.array(
+                [[0.2, 0.8], [0.7, 0.3], [0.4, 0.6]],
+                dtype=np.float64,
+            )
+
+    features = np.array([[10.0, 1.0], [20.0, 2.0], [30.0, 3.0]])
+
+    def fake_get_embeddings(
+        texts: tuple[str, ...],
+        received_tokenizer: PreTrainedTokenizerBase,
+        received_encoder: PreTrainedModel,
+        batch_size: int,
+    ) -> np.ndarray:
+        received["texts"] = texts
+        received["tokenizer"] = received_tokenizer
+        received["encoder"] = received_encoder
+        received["batch_size"] = batch_size
+        return features
+
+    monkeypatch.setattr(comparison, "get_embeddings", fake_get_embeddings)
+    setup = FrozenBaselineSetup(
+        classifier=cast(LogisticRegression, FakeClassifier()),
+        tokenizer=tokenizer,
+        encoder=encoder,
+    )
+
+    predictions = predict_baseline(
+        ["first", "second", "third"],
+        setup,
+        batch_size=2,
+    )
+
+    assert received["texts"] == ("first", "second", "third")
+    assert received["tokenizer"] is tokenizer
+    assert received["encoder"] is encoder
+    assert received["batch_size"] == 2
+    assert received["prediction_features"] is features
+    assert received["probability_features"] is features
+    assert [record.text for record in predictions] == ["first", "second", "third"]
+    assert [record.prediction for record in predictions] == [1, 0, 1]
+    assert [record.probabilities.tolist() for record in predictions] == [
+        [0.8, 0.2],
+        [0.3, 0.7],
+        [0.6, 0.4],
+    ]
+
+
+@pytest.mark.parametrize(
+    ("features", "probabilities", "message"),
+    (
+        (np.array([[1.0, 2.0]]), np.array([[0.5, 0.5]]), "shape"),
+        (
+            np.array([[1.0, 2.0], [3.0, 4.0]]),
+            np.array([[float("nan"), 0.5], [0.5, 0.5]]),
+            "finite",
+        ),
+    ),
+)
+def test_predict_baseline_rejects_invalid_features_and_probabilities(
+    monkeypatch: pytest.MonkeyPatch,
+    features: np.ndarray,
+    probabilities: np.ndarray,
+    message: str,
+) -> None:
+    class FakeClassifier:
+        classes_ = np.array([0, 1], dtype=np.int64)
+
+        def predict(self, embeddings: np.ndarray) -> np.ndarray:
+            return np.zeros(embeddings.shape[0], dtype=np.int64)
+
+        def predict_proba(self, embeddings: np.ndarray) -> np.ndarray:
+            return probabilities
+
+    monkeypatch.setattr(comparison, "get_embeddings", lambda *args, **kwargs: features)
+    setup = FrozenBaselineSetup(
+        classifier=cast(LogisticRegression, FakeClassifier()),
+        tokenizer=cast(PreTrainedTokenizerBase, object()),
+        encoder=cast(PreTrainedModel, object()),
+    )
+
+    with pytest.raises(ValueError, match=message):
+        predict_baseline(["first", "second"], setup)
