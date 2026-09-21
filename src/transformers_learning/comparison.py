@@ -27,7 +27,11 @@ from transformers import (
 from transformers.modeling_outputs import SequenceClassifierOutput
 
 from .baseline import (
+    FrozenEmbeddingDataset,
+    frozen_embedding_cache_key,
+    load_frozen_embedding_cache,
     prepare_frozen_embedding_dataset,
+    save_frozen_embedding_cache,
     train_logistic_regression_on_frozen_embeddings,
 )
 from .datasets import (
@@ -198,15 +202,49 @@ def recreate_frozen_baseline(
     tokenizer: PreTrainedTokenizerBase,
     encoder: PreTrainedModel,
     batch_size: int = 32,
+    embedding_cache_path: Path | None = None,
 ) -> FrozenBaselineSetup:
-    """Fit the fixed Day 4 baseline using only Day 6 outer-training rows."""
+    """Fit the fixed baseline from Day 6 outer-training rows only.
 
-    training_dataset = prepare_frozen_embedding_dataset(
-        comparison.outer_train,
-        tokenizer,
-        encoder,
-        batch_size=batch_size,
-    )
+    When a cache path is supplied, frozen features are reused only if their
+    source rows, label order, and base encoder name match ``outer_train``.
+    The outer test partition is never passed to this cache or classifier fit.
+    """
+
+    cache_key = frozen_embedding_cache_key(comparison.outer_train)
+    training_dataset: FrozenEmbeddingDataset
+    if embedding_cache_path is not None and embedding_cache_path.is_file():
+        try:
+            training_dataset = load_frozen_embedding_cache(
+                embedding_cache_path,
+                cache_key=cache_key,
+            )
+        except ValueError:
+            training_dataset = prepare_frozen_embedding_dataset(
+                comparison.outer_train,
+                tokenizer,
+                encoder,
+                batch_size=batch_size,
+            )
+            save_frozen_embedding_cache(
+                training_dataset,
+                embedding_cache_path,
+                cache_key=cache_key,
+            )
+    else:
+        training_dataset = prepare_frozen_embedding_dataset(
+            comparison.outer_train,
+            tokenizer,
+            encoder,
+            batch_size=batch_size,
+        )
+        if embedding_cache_path is not None:
+            save_frozen_embedding_cache(
+                training_dataset,
+                embedding_cache_path,
+                cache_key=cache_key,
+            )
+
     classifier = train_logistic_regression_on_frozen_embeddings(training_dataset)
     return FrozenBaselineSetup(
         classifier=classifier,

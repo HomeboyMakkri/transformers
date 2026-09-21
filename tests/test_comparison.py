@@ -200,6 +200,105 @@ def test_recreate_frozen_baseline_receives_only_outer_training_rows(
     assert setup.encoder is encoder
 
 
+def test_recreate_frozen_baseline_reuses_matching_outer_train_embedding_cache(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    comparison_dataset = prepare_comparison_dataset(make_sentiment_dataframe())
+    tokenizer = cast(PreTrainedTokenizerBase, object())
+    encoder = cast(PreTrainedModel, object())
+    cached_dataset = FrozenEmbeddingDataset(
+        features=np.array([[1.0], [2.0]], dtype=float),
+        labels=np.array([0, 1], dtype=np.int64),
+    )
+    received: dict[str, object] = {}
+
+    def fake_load_cache(path: Path, *, cache_key: str) -> FrozenEmbeddingDataset:
+        received["load"] = (path, cache_key)
+        return cached_dataset
+
+    def fail_if_extract_called(*args: object, **kwargs: object) -> FrozenEmbeddingDataset:
+        raise AssertionError("Matching cache must avoid embedding extraction")
+
+    classifier = cast(LogisticRegression, object())
+    monkeypatch.setattr(comparison, "load_frozen_embedding_cache", fake_load_cache)
+    monkeypatch.setattr(comparison, "prepare_frozen_embedding_dataset", fail_if_extract_called)
+    monkeypatch.setattr(
+        comparison,
+        "train_logistic_regression_on_frozen_embeddings",
+        lambda dataset: classifier,
+    )
+    cache_path = tmp_path / "day6_outer_train_frozen_embeddings.npz"
+    cache_path.write_bytes(b"present")
+
+    setup = recreate_frozen_baseline(
+        comparison_dataset,
+        tokenizer,
+        encoder,
+        embedding_cache_path=cache_path,
+    )
+
+    assert received["load"] == (
+        cache_path,
+        comparison.frozen_embedding_cache_key(comparison_dataset.outer_train),
+    )
+    assert setup.classifier is classifier
+
+
+def test_recreate_frozen_baseline_replaces_an_incompatible_cache(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    comparison_dataset = prepare_comparison_dataset(make_sentiment_dataframe())
+    tokenizer = cast(PreTrainedTokenizerBase, object())
+    encoder = cast(PreTrainedModel, object())
+    fresh_dataset = FrozenEmbeddingDataset(
+        features=np.array([[1.0], [2.0]], dtype=float),
+        labels=np.array([0, 1], dtype=np.int64),
+    )
+    received: dict[str, object] = {}
+
+    def fail_to_load(*args: object, **kwargs: object) -> FrozenEmbeddingDataset:
+        raise ValueError("cache does not match")
+
+    def fake_prepare(*args: object, **kwargs: object) -> FrozenEmbeddingDataset:
+        received["prepared"] = True
+        return fresh_dataset
+
+    def fake_save(
+        dataset: FrozenEmbeddingDataset,
+        path: Path,
+        *,
+        cache_key: str,
+    ) -> None:
+        received["saved"] = (dataset, path, cache_key)
+
+    monkeypatch.setattr(comparison, "load_frozen_embedding_cache", fail_to_load)
+    monkeypatch.setattr(comparison, "prepare_frozen_embedding_dataset", fake_prepare)
+    monkeypatch.setattr(comparison, "save_frozen_embedding_cache", fake_save)
+    monkeypatch.setattr(
+        comparison,
+        "train_logistic_regression_on_frozen_embeddings",
+        lambda dataset: cast(LogisticRegression, object()),
+    )
+    cache_path = tmp_path / "day6_outer_train_frozen_embeddings.npz"
+    cache_path.write_bytes(b"stale")
+
+    recreate_frozen_baseline(
+        comparison_dataset,
+        tokenizer,
+        encoder,
+        embedding_cache_path=cache_path,
+    )
+
+    assert received["prepared"] is True
+    assert received["saved"] == (
+        fresh_dataset,
+        cache_path,
+        comparison.frozen_embedding_cache_key(comparison_dataset.outer_train),
+    )
+
+
 def test_load_fine_tuned_inference_uses_local_binary_artifact_and_eval_mode(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
