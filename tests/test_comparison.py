@@ -116,6 +116,19 @@ def test_get_day6_artifact_inputs_requires_reloadable_binary_artifact(
     assert not hasattr(inputs, "vectorizer_path")
 
 
+def test_get_day6_artifact_inputs_accepts_omitted_default_binary_label_metadata(
+    tmp_path: Path,
+) -> None:
+    """Transformers may omit default two-label metadata from saved config JSON."""
+
+    model_directory = tmp_path / "fine_tuned_model"
+    write_fine_tuned_artifact(model_directory, {})
+
+    inputs = get_day6_artifact_inputs(model_directory)
+
+    assert inputs.fine_tuned_model_directory == model_directory
+
+
 @pytest.mark.parametrize(
     ("setup", "error_type", "message"),
     (

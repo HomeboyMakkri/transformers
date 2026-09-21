@@ -718,8 +718,10 @@ def _validate_binary_head(config: dict[str, Any]) -> None:
             raise FineTunedArtifactError(
                 "Fine-tuned model must have a binary SST-2 classification head"
             )
-        return
-    if not isinstance(id2label, dict) or set(id2label) != {"0", "1"}:
+
+    if id2label is not None and (
+        not isinstance(id2label, dict) or set(id2label) != {"0", "1"}
+    ):
         raise FineTunedArtifactError(
             "Fine-tuned model config must declare binary labels 0 and 1"
         )
