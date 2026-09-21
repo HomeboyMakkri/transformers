@@ -18,7 +18,10 @@ from transformers_learning.comparison import (
     FineTunedArtifactError,
     FineTunedInferenceSetup,
     FrozenBaselineSetup,
+    HeldOutModelEvaluation,
+    PairedHoldoutEvaluation,
     SentimentPrediction,
+    build_confusion_matrix,
     build_example_comparison_table,
     compare_example_predictions,
     compare_five_examples,
@@ -29,6 +32,8 @@ from transformers_learning.comparison import (
     predict_fine_tuned,
     prepare_comparison_dataset,
     recreate_frozen_baseline,
+    save_comparison_results,
+    save_paired_confusion_matrices,
 )
 from transformers_learning.splitting import (
     split_outer_sentiment_indices,
@@ -708,3 +713,106 @@ def test_evaluate_paired_holdout_guards_zero_f1_and_rejects_misalignment(
             fine_tuned_setup,
             baseline_setup,
         )
+
+
+def make_paired_evaluation() -> PairedHoldoutEvaluation:
+    """Build a compact valid paired result with asymmetric confusion matrices."""
+
+    labels = np.array([0, 0, 0, 1], dtype=np.int64)
+    fine_tuned_predictions = np.array([0, 1, 1, 1], dtype=np.int64)
+    baseline_predictions = np.array([0, 0, 0, 0], dtype=np.int64)
+    fine_tuned = HeldOutModelEvaluation(
+        predictions=fine_tuned_predictions,
+        classification_report="fine-tuned report",
+        class_support={0: 3, 1: 1},
+        accuracy=0.5,
+        macro_f1=0.5,
+    )
+    baseline = HeldOutModelEvaluation(
+        predictions=baseline_predictions,
+        classification_report="baseline report",
+        class_support={0: 3, 1: 1},
+        accuracy=0.75,
+        macro_f1=0.42,
+    )
+    return PairedHoldoutEvaluation(
+        labels=labels,
+        fine_tuned=fine_tuned,
+        baseline=baseline,
+        accuracy_delta=-0.25,
+        macro_f1_delta=0.08,
+        relative_macro_f1_delta=0.190476,
+    )
+
+
+def test_confusion_matrix_orientation_and_artifact_writing(tmp_path: Path) -> None:
+    evaluation = make_paired_evaluation()
+
+    matrix = build_confusion_matrix(
+        evaluation.labels,
+        evaluation.fine_tuned.predictions,
+    )
+    artifacts = save_paired_confusion_matrices(
+        evaluation,
+        tmp_path / "plots" / "confusion_matrix_finetuned.png",
+        tmp_path / "plots" / "confusion_matrix_baseline.png",
+    )
+
+    assert matrix.tolist() == [[1, 2], [0, 1]]
+    assert artifacts.fine_tuned_matrix.tolist() == [[1, 2], [0, 1]]
+    assert artifacts.baseline_matrix.tolist() == [[3, 0], [1, 0]]
+    assert artifacts.fine_tuned_path.is_file()
+    assert artifacts.baseline_path.is_file()
+    assert artifacts.fine_tuned_path.stat().st_size > 0
+    assert artifacts.baseline_path.stat().st_size > 0
+
+
+def test_save_comparison_results_records_metrics_context_and_refuses_bad_input(
+    tmp_path: Path,
+) -> None:
+    evaluation = make_paired_evaluation()
+    result_path = tmp_path / "results" / "comparison_results.txt"
+
+    save_comparison_results(
+        evaluation,
+        result_path,
+        fine_tuned_model_directory=Path("artifacts/fine_tuned_model"),
+        fine_tuned_confusion_matrix_path=Path("plots/fine.png"),
+        baseline_confusion_matrix_path=Path("plots/base.png"),
+        dataset_identifier="test-sst2",
+        baseline_encoder_model_name="test-encoder",
+    )
+
+    contents = result_path.read_text(encoding="utf-8")
+    assert "dataset_identifier: test-sst2" in contents
+    assert "label_mapping: 0=negative, 1=positive" in contents
+    assert "outer_test_size: 0.2" in contents
+    assert "random_state: 42" in contents
+    assert "test_sample_count: 4" in contents
+    assert "fine_tuned_checkpoint: artifacts/fine_tuned_model" in contents
+    assert "baseline_encoder_model: test-encoder" in contents
+    assert "fine_tuned_confusion_matrix: plots/fine.png" in contents
+    assert "baseline_confusion_matrix: plots/base.png" in contents
+    assert "macro_f1_delta: 0.080000" in contents
+    assert "accuracy_delta: -0.250000" in contents
+
+    invalid = PairedHoldoutEvaluation(
+        labels=evaluation.labels,
+        fine_tuned=HeldOutModelEvaluation(
+            predictions=np.array([0, 1], dtype=np.int64),
+            classification_report="",
+            class_support={0: 1, 1: 1},
+            accuracy=0.5,
+            macro_f1=0.5,
+        ),
+        baseline=evaluation.baseline,
+        accuracy_delta=0.0,
+        macro_f1_delta=0.0,
+        relative_macro_f1_delta=None,
+    )
+    invalid_path = tmp_path / "invalid.txt"
+
+    with pytest.raises(ValueError, match="align with input texts"):
+        save_comparison_results(invalid, invalid_path)
+
+    assert not invalid_path.exists()

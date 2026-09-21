@@ -6,12 +6,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
+import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import torch
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, classification_report, f1_score
+from sklearn.metrics import (
+    accuracy_score,
+    classification_report,
+    confusion_matrix,
+    f1_score,
+)
 from transformers import (
     AutoModelForSequenceClassification,
     AutoTokenizer,
@@ -27,13 +33,19 @@ from .baseline import (
 from .datasets import (
     LABEL_COLUMN,
     SST2_LABEL_MAP,
+    SST2_METADATA,
     TEXT_COLUMN,
     validate_sentiment_dataframe,
 )
 from .fine_tuning import DEFAULT_FINE_TUNED_MODEL_DIRECTORY, NUM_SENTIMENT_LABELS
 from .modeling import get_embeddings
-from .splitting import OuterSentimentSplit, split_outer_sentiment_indices
-from .tokenization import tokenize_texts
+from .splitting import (
+    OUTER_TEST_SIZE,
+    SPLIT_RANDOM_STATE,
+    OuterSentimentSplit,
+    split_outer_sentiment_indices,
+)
+from .tokenization import DEFAULT_MODEL_NAME, tokenize_texts
 
 _MODEL_CONFIG_FILENAME = "config.json"
 _TOKENIZER_CONFIG_FILENAME = "tokenizer_config.json"
@@ -50,6 +62,9 @@ DAY6_EXAMPLE_TEXTS = (
     "Best film I've seen this year!",
     "Boring and too long.",
 )
+DEFAULT_FINE_TUNED_CONFUSION_MATRIX_PATH = Path("confusion_matrix_finetuned.png")
+DEFAULT_BASELINE_CONFUSION_MATRIX_PATH = Path("confusion_matrix_baseline.png")
+DEFAULT_COMPARISON_RESULTS_PATH = Path("comparison_results.txt")
 
 
 class FineTunedArtifactError(ValueError):
@@ -130,6 +145,16 @@ class PairedHoldoutEvaluation:
     accuracy_delta: float
     macro_f1_delta: float
     relative_macro_f1_delta: float | None
+
+
+@dataclass(frozen=True)
+class ConfusionMatrixArtifacts:
+    """Comparable raw-count matrices and the ignored PNG files that contain them."""
+
+    fine_tuned_matrix: npt.NDArray[np.int64]
+    baseline_matrix: npt.NDArray[np.int64]
+    fine_tuned_path: Path
+    baseline_path: Path
 
 
 def prepare_comparison_dataset(dataframe: pd.DataFrame) -> ComparisonDataset:
@@ -427,6 +452,147 @@ def evaluate_paired_holdout(
         macro_f1_delta=macro_f1_delta,
         relative_macro_f1_delta=relative_macro_f1_delta,
     )
+
+
+def build_confusion_matrix(
+    labels: npt.NDArray[np.int64],
+    predictions: npt.NDArray[np.int64],
+) -> npt.NDArray[np.int64]:
+    """Build a raw-count matrix with true rows and predicted columns in `[0, 1]`."""
+
+    _validate_holdout_labels(labels, labels.shape[0])
+    _validate_baseline_labels(predictions, labels.shape[0])
+    return np.asarray(confusion_matrix(labels, predictions, labels=[0, 1]), dtype=np.int64)
+
+
+def save_paired_confusion_matrices(
+    evaluation: PairedHoldoutEvaluation,
+    fine_tuned_path: Path = DEFAULT_FINE_TUNED_CONFUSION_MATRIX_PATH,
+    baseline_path: Path = DEFAULT_BASELINE_CONFUSION_MATRIX_PATH,
+) -> ConfusionMatrixArtifacts:
+    """Save both raw-count matrices with identical labels and count scale."""
+
+    labels = evaluation.labels
+    fine_tuned_matrix = build_confusion_matrix(labels, evaluation.fine_tuned.predictions)
+    baseline_matrix = build_confusion_matrix(labels, evaluation.baseline.predictions)
+    color_scale_max = max(int(fine_tuned_matrix.max()), int(baseline_matrix.max()), 1)
+    _save_confusion_matrix_plot(
+        fine_tuned_matrix,
+        fine_tuned_path,
+        "Confusion Matrix - Fine-tuned Model",
+        color_scale_max,
+    )
+    _save_confusion_matrix_plot(
+        baseline_matrix,
+        baseline_path,
+        "Confusion Matrix - Frozen Baseline",
+        color_scale_max,
+    )
+    return ConfusionMatrixArtifacts(
+        fine_tuned_matrix=fine_tuned_matrix,
+        baseline_matrix=baseline_matrix,
+        fine_tuned_path=fine_tuned_path,
+        baseline_path=baseline_path,
+    )
+
+
+def save_comparison_results(
+    evaluation: PairedHoldoutEvaluation,
+    path: Path = DEFAULT_COMPARISON_RESULTS_PATH,
+    *,
+    fine_tuned_model_directory: Path = DEFAULT_FINE_TUNED_MODEL_DIRECTORY,
+    fine_tuned_confusion_matrix_path: Path = DEFAULT_FINE_TUNED_CONFUSION_MATRIX_PATH,
+    baseline_confusion_matrix_path: Path = DEFAULT_BASELINE_CONFUSION_MATRIX_PATH,
+    dataset_identifier: str = SST2_METADATA.identifier,
+    baseline_encoder_model_name: str = DEFAULT_MODEL_NAME,
+) -> None:
+    """Write ignored paired metrics and minimal context without persisting models."""
+
+    _validate_paired_evaluation(evaluation)
+    relative_f1 = (
+        "unavailable (baseline macro F1 is zero)"
+        if evaluation.relative_macro_f1_delta is None
+        else f"{evaluation.relative_macro_f1_delta:.6f}"
+    )
+    label_mapping = ", ".join(
+        f"{label}={name}" for label, name in SST2_LABEL_MAP.items()
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "\n".join(
+            (
+                f"dataset_identifier: {dataset_identifier}",
+                f"label_mapping: {label_mapping}",
+                f"outer_test_size: {OUTER_TEST_SIZE}",
+                f"random_state: {SPLIT_RANDOM_STATE}",
+                f"test_sample_count: {evaluation.labels.shape[0]}",
+                f"fine_tuned_checkpoint: {fine_tuned_model_directory}",
+                f"baseline_encoder_model: {baseline_encoder_model_name}",
+                f"fine_tuned_confusion_matrix: {fine_tuned_confusion_matrix_path}",
+                f"baseline_confusion_matrix: {baseline_confusion_matrix_path}",
+                f"fine_tuned_macro_f1: {evaluation.fine_tuned.macro_f1:.6f}",
+                f"fine_tuned_accuracy: {evaluation.fine_tuned.accuracy:.6f}",
+                f"baseline_macro_f1: {evaluation.baseline.macro_f1:.6f}",
+                f"baseline_accuracy: {evaluation.baseline.accuracy:.6f}",
+                f"macro_f1_delta: {evaluation.macro_f1_delta:.6f}",
+                f"accuracy_delta: {evaluation.accuracy_delta:.6f}",
+                f"relative_macro_f1_delta: {relative_f1}",
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
+
+
+def _save_confusion_matrix_plot(
+    matrix: npt.NDArray[np.int64],
+    path: Path,
+    title: str,
+    color_scale_max: int,
+) -> None:
+    """Render one raw-count confusion matrix with the fixed SST-2 orientation."""
+
+    figure, axes = plt.subplots(figsize=(6, 5))
+    image = axes.imshow(matrix, cmap="Blues", vmin=0, vmax=color_scale_max)
+    figure.colorbar(image, ax=axes)
+    class_names = (SST2_LABEL_MAP[0], SST2_LABEL_MAP[1])
+    axes.set_xticks((0, 1), class_names)
+    axes.set_yticks((0, 1), class_names)
+    axes.set_xlabel("Predicted label")
+    axes.set_ylabel("True label")
+    axes.set_title(title)
+    for row in range(NUM_SENTIMENT_LABELS):
+        for column in range(NUM_SENTIMENT_LABELS):
+            axes.text(column, row, str(matrix[row, column]), ha="center", va="center")
+    figure.tight_layout()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    figure.savefig(path, dpi=150)
+    plt.close(figure)
+
+
+def _validate_paired_evaluation(evaluation: PairedHoldoutEvaluation) -> None:
+    """Reject inconsistent public evaluation records before writing artifacts."""
+
+    labels = evaluation.labels
+    _validate_holdout_labels(labels, labels.shape[0])
+    for model_evaluation in (evaluation.fine_tuned, evaluation.baseline):
+        _validate_baseline_labels(model_evaluation.predictions, labels.shape[0])
+        if not 0.0 <= model_evaluation.accuracy <= 1.0 or not np.isfinite(
+            model_evaluation.accuracy
+        ):
+            raise ValueError("Held-out accuracy must be finite and between 0 and 1")
+        if not 0.0 <= model_evaluation.macro_f1 <= 1.0 or not np.isfinite(
+            model_evaluation.macro_f1
+        ):
+            raise ValueError("Held-out macro F1 must be finite and between 0 and 1")
+    if not np.isfinite(evaluation.accuracy_delta) or not np.isfinite(
+        evaluation.macro_f1_delta
+    ):
+        raise ValueError("Held-out metric deltas must be finite")
+    if evaluation.relative_macro_f1_delta is not None and not np.isfinite(
+        evaluation.relative_macro_f1_delta
+    ):
+        raise ValueError("Relative macro F1 delta must be finite when available")
 
 
 def validate_fine_tuned_model_artifact(directory: Path) -> Path:

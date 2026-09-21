@@ -391,10 +391,12 @@ Work on one item per request. For each item, read its matching `tasks/dayN.md` s
 
 ### D6-07 — Confusion matrices and comparison record
 
-- [ ] Build raw-count confusion matrices for both models with identical true
+- [x] **Status: implementation complete; real PNG and result artifacts require
+  a separate approved data/model integration run.**
+- [x] Build raw-count confusion matrices for both models with identical true
   and predicted axes, explicit `negative`/`positive` labels, and class order
   `[0, 1]`; save them as ignored PNG artifacts.
-- [ ] Write ignored `comparison_results.txt` with both models' macro F1 and
+- [x] Write ignored `comparison_results.txt` with both models' macro F1 and
   accuracy, signed deltas, and the required dataset/model/split/test-count and
   artifact context.
 - **Done when:** the two plots are directly comparable and the result record
