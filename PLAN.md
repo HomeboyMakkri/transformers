@@ -407,10 +407,12 @@ Work on one item per request. For each item, read its matching `tasks/dayN.md` s
 
 ### D6-08 — Day 6 notebook walkthrough and review
 
-- [ ] Add a thin Day 6 notebook that calls reusable `src/` functions, first
+- [x] **Status: implementation complete; real notebook execution requires the
+  ignored Day 5 artifact and a separate approved data/model integration run.**
+- [x] Add a thin Day 6 notebook that calls reusable `src/` functions, first
   compares the five small examples, then performs the paired outer-test
   evaluation and displays both confusion matrices and metric deltas.
-- [ ] Explain both inference data flows, `eval()`/no-gradient behavior, the
+- [x] Explain both inference data flows, `eval()`/no-gradient behavior, the
   shared holdout and leakage boundary, macro F1 versus accuracy, probability
   interpretation, and why detailed error analysis remains Day 7 work.
 - **Done when:** the checkpoint in `tasks/day6.md` is satisfied for both

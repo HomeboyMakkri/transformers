@@ -1,7 +1,7 @@
 """Reusable PyTorch inputs for Transformer sentiment fine-tuning."""
 
 import math
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypedDict, cast
@@ -41,6 +41,7 @@ DEFAULT_LEARNING_RATE = 2e-5
 DEFAULT_MAX_LENGTH = 128
 DEFAULT_NUM_EPOCHS = 3
 NUM_SENTIMENT_LABELS = 2
+TrainingProgressCallback = Callable[[int, int, int], None]
 
 
 class SentimentDatasetItem(TypedDict):
@@ -203,12 +204,18 @@ def train_epoch(
     dataloader: DataLoader[SentimentDatasetItem],
     optimizer: Optimizer,
     device: torch.device,
+    progress_callback: Callable[[int, int], None] | None = None,
 ) -> float:
-    """Fine-tune the classifier for one epoch and return mean batch loss."""
+    """Fine-tune the classifier for one epoch and return mean batch loss.
+
+    When supplied, ``progress_callback`` receives completed and total batch
+    counts after every optimizer step.
+    """
 
     model.train()
     total_loss = 0.0
     processed_batches = 0
+    total_batches = len(dataloader)
 
     for batch in dataloader:
         input_ids = batch["input_ids"].to(device)
@@ -238,6 +245,8 @@ def train_epoch(
         optimizer.step()
         total_loss += loss_value
         processed_batches += 1
+        if progress_callback is not None:
+            progress_callback(processed_batches, total_batches)
 
     if processed_batches == 0:
         raise ValueError("Training dataloader must contain at least one batch")
@@ -317,6 +326,7 @@ def run_fine_tuning(
     dataloaders: SentimentDataLoaders,
     optimizer: Optimizer,
     device: torch.device,
+    progress_callback: TrainingProgressCallback | None = None,
 ) -> tuple[FineTuningEpochMetrics, ...]:
     """Run the fixed three-epoch Day 5 training and validation sequence.
 
@@ -328,7 +338,18 @@ def run_fine_tuning(
 
     history: list[FineTuningEpochMetrics] = []
     for epoch in range(1, DEFAULT_NUM_EPOCHS + 1):
-        train_loss = train_epoch(model, dataloaders.train, optimizer, device)
+        if progress_callback is None:
+            train_loss = train_epoch(model, dataloaders.train, optimizer, device)
+        else:
+            train_loss = train_epoch(
+                model,
+                dataloaders.train,
+                optimizer,
+                device,
+                progress_callback=lambda completed, total, current_epoch=epoch: progress_callback(
+                    current_epoch, completed, total
+                ),
+            )
         validation = evaluate_sequence_classifier(
             model,
             dataloaders.validation,

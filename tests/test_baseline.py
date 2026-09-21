@@ -14,12 +14,41 @@ from transformers_learning.baseline import (
     FrozenEmbeddingDataset,
     FrozenEmbeddingSplit,
     evaluate_logistic_regression,
+    frozen_embedding_cache_key,
+    load_frozen_embedding_cache,
     prepare_frozen_embedding_dataset,
     save_baseline_results,
+    save_frozen_embedding_cache,
     split_frozen_embedding_dataset,
     train_logistic_regression,
 )
 from transformers_learning.datasets import SentimentDatasetValidationError
+
+
+def test_frozen_embedding_cache_round_trip_requires_matching_source(
+    tmp_path: Path,
+) -> None:
+    dataframe = pd.DataFrame({"text": ["Good", "Bad"], "label": [1, 0]})
+    dataset = FrozenEmbeddingDataset(
+        features=np.array([[1.5, 2.5], [3.5, 4.5]], dtype=np.float32),
+        labels=np.array([1, 0], dtype=np.int64),
+    )
+    cache_path = tmp_path / "data" / "day4_frozen_embeddings.npz"
+    cache_key = frozen_embedding_cache_key(dataframe, "test-encoder")
+
+    save_frozen_embedding_cache(dataset, cache_path, cache_key=cache_key)
+    loaded = load_frozen_embedding_cache(cache_path, cache_key=cache_key)
+
+    assert np.array_equal(loaded.features, dataset.features)
+    assert np.array_equal(loaded.labels, dataset.labels)
+    assert not list(cache_path.parent.glob("*.tmp.npz"))
+
+    changed_source = pd.DataFrame({"text": ["Changed", "Bad"], "label": [1, 0]})
+    with pytest.raises(ValueError, match="does not match"):
+        load_frozen_embedding_cache(
+            cache_path,
+            cache_key=frozen_embedding_cache_key(changed_source, "test-encoder"),
+        )
 
 
 def test_prepare_frozen_embedding_dataset_preserves_text_label_alignment(

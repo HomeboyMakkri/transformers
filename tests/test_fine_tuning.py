@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
@@ -383,6 +384,22 @@ def test_train_epoch_uses_the_required_operation_order_for_every_batch() -> None
     )
 
 
+def test_train_epoch_reports_completed_batch_progress() -> None:
+    model = TinyTrainingModel()
+    optimizer = torch.optim.AdamW(model.parameters(), lr=0.01)
+    progress: list[tuple[int, int]] = []
+
+    train_epoch(
+        cast(PreTrainedModel, model),
+        make_ordered_training_loader(batch_size=1),
+        optimizer,
+        torch.device("cpu"),
+        progress_callback=lambda completed, total: progress.append((completed, total)),
+    )
+
+    assert progress == [(1, 2), (2, 2)]
+
+
 def test_train_epoch_rejects_an_empty_dataloader() -> None:
     model = TinyTrainingModel()
     optimizer = torch.optim.AdamW(model.parameters(), lr=0.01)
@@ -597,6 +614,57 @@ def test_run_fine_tuning_records_exactly_three_ordered_epochs(
         FineTuningEpochMetrics(3, 0.4, 0.8, 0.75),
     )
     assert model.training is False
+
+
+def test_run_fine_tuning_forwards_epoch_aware_progress(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = torch.nn.Linear(1, 1)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=0.01)
+    tokenizer, _ = make_fake_tokenizer()
+    dataset = SentimentDataset(["Good movie", "Bad movie"], [1, 0], tokenizer, max_length=4)
+    dataloaders = create_sentiment_dataloaders(dataset, dataset, batch_size=2)
+    progress: list[tuple[int, int, int]] = []
+
+    def fake_train_epoch(
+        *_: object,
+        progress_callback: object = None,
+    ) -> float:
+        assert callable(progress_callback)
+        callback = cast(Callable[[int, int], None], progress_callback)
+        callback(1, 2)
+        callback(2, 2)
+        return 0.5
+
+    def fake_evaluate(*_: object) -> ValidationEvaluation:
+        return ValidationEvaluation(
+            labels=np.array([1, 0], dtype=np.int64),
+            predictions=np.array([1, 0], dtype=np.int64),
+            accuracy=1.0,
+            macro_f1=1.0,
+        )
+
+    monkeypatch.setattr(fine_tuning, "train_epoch", fake_train_epoch)
+    monkeypatch.setattr(fine_tuning, "evaluate_sequence_classifier", fake_evaluate)
+
+    run_fine_tuning(
+        cast(PreTrainedModel, model),
+        dataloaders,
+        optimizer,
+        torch.device("cpu"),
+        progress_callback=lambda epoch, completed, total: progress.append(
+            (epoch, completed, total)
+        ),
+    )
+
+    assert progress == [
+        (1, 1, 2),
+        (1, 2, 2),
+        (2, 1, 2),
+        (2, 2, 2),
+        (3, 1, 2),
+        (3, 2, 2),
+    ]
 
 
 def make_completed_fine_tuning_history() -> tuple[FineTuningEpochMetrics, ...]:

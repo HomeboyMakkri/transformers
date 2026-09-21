@@ -1,6 +1,7 @@
 """Frozen Transformer features for the Day 4 classification baseline."""
 
 from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path
 from typing import Any, cast
 
@@ -82,6 +83,78 @@ def prepare_frozen_embedding_dataset(
         progress_callback=progress_callback,
     )
 
+    dataset = FrozenEmbeddingDataset(features=features, labels=labels)
+    _validate_frozen_embedding_dataset(dataset)
+    return dataset
+
+
+def frozen_embedding_cache_key(
+    dataframe: pd.DataFrame,
+    model_name: str = DEFAULT_MODEL_NAME,
+) -> str:
+    """Return a stable cache key for validated source rows and their encoder.
+
+    A cache is reusable only when the text and label in every row, their order,
+    and the encoder checkpoint are the same.  The split itself is deterministic
+    and is intentionally recreated after loading the cached features.
+    """
+
+    validated = validate_sentiment_dataframe(dataframe)
+    digest = sha256()
+    digest.update(model_name.encode("utf-8"))
+    digest.update(b"\0")
+    for text, label in zip(
+        validated[TEXT_COLUMN], validated[LABEL_COLUMN], strict=True
+    ):
+        digest.update(str(text).encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(str(int(label)).encode("ascii"))
+        digest.update(b"\n")
+    return digest.hexdigest()
+
+
+def save_frozen_embedding_cache(
+    dataset: FrozenEmbeddingDataset,
+    path: Path,
+    *,
+    cache_key: str,
+) -> None:
+    """Persist validated frozen features locally for a matching later run."""
+
+    _validate_frozen_embedding_dataset(dataset)
+    if not cache_key:
+        raise ValueError("Frozen embedding cache key must be non-empty")
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = path.with_suffix(f"{path.suffix}.tmp.npz")
+    np.savez(
+        temporary_path,
+        features=dataset.features,
+        labels=dataset.labels,
+        cache_key=np.asarray(cache_key),
+    )
+    temporary_path.replace(path)
+
+
+def load_frozen_embedding_cache(
+    path: Path,
+    *,
+    cache_key: str,
+) -> FrozenEmbeddingDataset:
+    """Load a local frozen-feature cache only when its source key matches."""
+
+    if not cache_key:
+        raise ValueError("Frozen embedding cache key must be non-empty")
+    try:
+        with np.load(path, allow_pickle=False) as cache:
+            saved_key = str(cache["cache_key"].item())
+            features = np.asarray(cache["features"])
+            labels = np.asarray(cache["labels"], dtype=np.int64)
+    except (OSError, KeyError, ValueError) as error:
+        raise ValueError(f"Cannot load frozen embedding cache: {path}") from error
+
+    if saved_key != cache_key:
+        raise ValueError("Frozen embedding cache does not match the current source data")
     dataset = FrozenEmbeddingDataset(features=features, labels=labels)
     _validate_frozen_embedding_dataset(dataset)
     return dataset
