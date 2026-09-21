@@ -42,7 +42,7 @@ from .datasets import (
     validate_sentiment_dataframe,
 )
 from .fine_tuning import DEFAULT_FINE_TUNED_MODEL_DIRECTORY, NUM_SENTIMENT_LABELS
-from .modeling import get_embeddings
+from .modeling import ProgressCallback, get_embeddings
 from .splitting import (
     OUTER_TEST_SIZE,
     SPLIT_RANDOM_STATE,
@@ -289,8 +289,13 @@ def predict_fine_tuned(
     texts: str | Sequence[str],
     setup: FineTunedInferenceSetup,
     batch_size: int = 32,
+    progress_callback: ProgressCallback | None = None,
 ) -> tuple[SentimentPrediction, ...]:
-    """Predict binary sentiment from one text or an ordered text sequence."""
+    """Predict binary sentiment from one text or an ordered text sequence.
+
+    When supplied, ``progress_callback`` receives completed and total text
+    counts after every completed batch.
+    """
 
     normalized_texts = _normalize_prediction_texts(texts)
     _validate_batch_size(batch_size)
@@ -319,6 +324,8 @@ def predict_fine_tuned(
                     probabilities=row.copy(),
                 )
             )
+        if progress_callback is not None:
+            progress_callback(start + len(batch_texts), len(normalized_texts))
     return tuple(predictions)
 
 
@@ -326,8 +333,13 @@ def predict_baseline(
     texts: str | Sequence[str],
     setup: FrozenBaselineSetup,
     batch_size: int = 32,
+    progress_callback: ProgressCallback | None = None,
 ) -> tuple[SentimentPrediction, ...]:
-    """Predict binary sentiment through frozen embeddings and Logistic Regression."""
+    """Predict binary sentiment through frozen embeddings and Logistic Regression.
+
+    The optional callback reports progress from the expensive frozen-embedding
+    extraction; classifier prediction after extraction is comparatively small.
+    """
 
     normalized_texts = _normalize_prediction_texts(texts)
     _validate_batch_size(batch_size)
@@ -337,6 +349,7 @@ def predict_baseline(
             setup.tokenizer,
             setup.encoder,
             batch_size=batch_size,
+            progress_callback=progress_callback,
         )
     )
     _validate_prediction_features(features, len(normalized_texts))
@@ -448,6 +461,8 @@ def evaluate_paired_holdout(
     fine_tuned_setup: FineTunedInferenceSetup,
     baseline_setup: FrozenBaselineSetup,
     batch_size: int = 32,
+    fine_tuned_progress_callback: ProgressCallback | None = None,
+    baseline_progress_callback: ProgressCallback | None = None,
 ) -> PairedHoldoutEvaluation:
     """Evaluate both fixed model paths on the same ordered outer-test rows."""
 
@@ -458,11 +473,13 @@ def evaluate_paired_holdout(
         texts,
         fine_tuned_setup,
         batch_size=batch_size,
+        progress_callback=fine_tuned_progress_callback,
     )
     baseline_predictions = predict_baseline(
         texts,
         baseline_setup,
         batch_size=batch_size,
+        progress_callback=baseline_progress_callback,
     )
     fine_tuned_labels = _extract_aligned_prediction_labels(
         fine_tuned_predictions,

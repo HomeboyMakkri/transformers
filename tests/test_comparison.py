@@ -382,6 +382,7 @@ def test_predict_fine_tuned_batches_preserves_order_and_disables_gradients(
     moved_devices: list[torch.device] = []
     model_input_shapes: list[tuple[int, ...]] = []
     gradient_states: list[bool] = []
+    progress: list[tuple[int, int]] = []
     text_ids = {"one": 0, "first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5}
 
     class FakeEncoding(dict[str, torch.Tensor]):
@@ -431,6 +432,7 @@ def test_predict_fine_tuned_batches_preserves_order_and_disables_gradients(
         ["first", "second", "third", "fourth", "fifth"],
         setup,
         batch_size=2,
+        progress_callback=lambda completed, total: progress.append((completed, total)),
     )
 
     assert [record.text for record in scalar_prediction] == ["one"]
@@ -452,6 +454,7 @@ def test_predict_fine_tuned_batches_preserves_order_and_disables_gradients(
     assert moved_devices == [torch.device("cpu")] * 4
     assert gradient_states == [False] * 4
     assert fake_model.eval_calls == 2
+    assert progress == [(2, 5), (4, 5), (5, 5)]
     for record in (*scalar_prediction, *predictions):
         assert record.probabilities.shape == (2,)
         assert np.isfinite(record.probabilities).all()
@@ -529,11 +532,13 @@ def test_predict_baseline_preserves_order_and_reorders_probability_columns(
         received_tokenizer: PreTrainedTokenizerBase,
         received_encoder: PreTrainedModel,
         batch_size: int,
+        progress_callback: object,
     ) -> np.ndarray:
         received["texts"] = texts
         received["tokenizer"] = received_tokenizer
         received["encoder"] = received_encoder
         received["batch_size"] = batch_size
+        received["progress_callback"] = progress_callback
         return features
 
     monkeypatch.setattr(comparison, "get_embeddings", fake_get_embeddings)
@@ -543,16 +548,19 @@ def test_predict_baseline_preserves_order_and_reorders_probability_columns(
         encoder=encoder,
     )
 
+    progress_callback = lambda completed, total: None
     predictions = predict_baseline(
         ["first", "second", "third"],
         setup,
         batch_size=2,
+        progress_callback=progress_callback,
     )
 
     assert received["texts"] == ("first", "second", "third")
     assert received["tokenizer"] is tokenizer
     assert received["encoder"] is encoder
     assert received["batch_size"] == 2
+    assert received["progress_callback"] is progress_callback
     assert received["prediction_features"] is features
     assert received["probability_features"] is features
     assert [record.text for record in predictions] == ["first", "second", "third"]
@@ -723,34 +731,50 @@ def test_evaluate_paired_holdout_reports_support_metrics_and_signed_deltas(
         texts: tuple[str, ...],
         setup: FineTunedInferenceSetup,
         batch_size: int,
+        progress_callback: object,
     ) -> tuple[SentimentPrediction, ...]:
-        received["fine_tuned"] = (texts, setup, batch_size)
+        received["fine_tuned"] = (texts, setup, batch_size, progress_callback)
         return make_predictions(texts, labels)
 
     def fake_baseline(
         texts: tuple[str, ...],
         setup: FrozenBaselineSetup,
         batch_size: int,
+        progress_callback: object,
     ) -> tuple[SentimentPrediction, ...]:
-        received["baseline"] = (texts, setup, batch_size)
+        received["baseline"] = (texts, setup, batch_size, progress_callback)
         return make_predictions(texts, np.zeros_like(labels))
 
     monkeypatch.setattr(comparison, "predict_fine_tuned", fake_fine_tuned)
     monkeypatch.setattr(comparison, "predict_baseline", fake_baseline)
     fine_tuned_setup = cast(FineTunedInferenceSetup, object())
     baseline_setup = cast(FrozenBaselineSetup, object())
+    fine_tuned_progress_callback = lambda completed, total: None
+    baseline_progress_callback = lambda completed, total: None
 
     evaluation = evaluate_paired_holdout(
         comparison_dataset,
         fine_tuned_setup,
         baseline_setup,
         batch_size=3,
+        fine_tuned_progress_callback=fine_tuned_progress_callback,
+        baseline_progress_callback=baseline_progress_callback,
     )
 
     expected_texts = tuple(comparison_dataset.outer_test["text"])
     assert received == {
-        "fine_tuned": (expected_texts, fine_tuned_setup, 3),
-        "baseline": (expected_texts, baseline_setup, 3),
+        "fine_tuned": (
+            expected_texts,
+            fine_tuned_setup,
+            3,
+            fine_tuned_progress_callback,
+        ),
+        "baseline": (
+            expected_texts,
+            baseline_setup,
+            3,
+            baseline_progress_callback,
+        ),
     }
     assert evaluation.labels.tolist() == labels.tolist()
     assert evaluation.fine_tuned.class_support == {0: 2, 1: 2}

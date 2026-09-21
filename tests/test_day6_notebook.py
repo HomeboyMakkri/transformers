@@ -40,6 +40,9 @@ def test_day6_notebook_is_thin_and_calls_reusable_pipeline() -> None:
     assert "load_fine_tuned_inference(" in combined_code
     assert "compare_five_examples(" in combined_code
     assert "evaluate_paired_holdout(" in combined_code
+    assert "holdout_batch_size = 16" in combined_code
+    assert "fine_tuned_progress_callback=" in combined_code
+    assert "baseline_progress_callback=" in combined_code
     assert "save_paired_confusion_matrices(" in combined_code
     assert "save_comparison_results(" in combined_code
 
