@@ -6,8 +6,9 @@ Build a seven-day sentiment-analysis project while understanding tokenization, h
 
 ## Current scope
 
-Days 1–6 are specified below. Day 7 remains high-level until its requirements
-are discussed; later-day code is out of scope for now.
+Days 1–7 are specified below. Implementation still follows `PLAN.md` one
+numbered item at a time; specifying Day 7 does not authorize implementing all
+of it in one change.
 
 ## Accepted decisions
 
@@ -246,6 +247,89 @@ are discussed; later-day code is out of scope for now.
   full shared holdout are separate integration checks requiring an explicit
   warning about downloads, runtime, memory, and the availability of the Day 5
   artifact.
+
+## Day 7 contract: error analysis and Gradio demo
+
+### Scope and accepted decisions
+
+- Day 7 analyzes the final epoch-3 fine-tuned classifier from Day 5 on the
+  unchanged shared outer holdout used in Day 6. It does not retrain, tune, or
+  select a model after inspecting holdout errors.
+- SST-2 remains a binary task with label order `[0, 1]` and names
+  `negative`/`positive`. The three-class `Negative`/`Neutral`/`Positive`
+  mapping in the copied Day 7 example conflicts with the trained
+  `num_labels=2` head and must not be used. Neutral-looking text is still
+  forced into one of the two SST-2 classes.
+- Gradio is the required mini-application because it is the primary option in
+  `tasks/day7.md` and is already pinned in `requirements.txt`. The optional
+  FastAPI alternative is outside the required seven-day scope and may be
+  considered only in a later, separately specified task.
+- Reusable analysis and inference-formatting logic lives in
+  `src/transformers_learning/`; the repository-root `app.py` is a thin Gradio
+  composition layer. Generated data, predictions, reports, and model artifacts
+  remain excluded from Git.
+
+### Held-out error analysis
+
+- Recreate the validated SST-2 outer split from original source-row order and
+  use only `outer_test`. Reload `fine_tuned_model/` through the existing
+  artifact validation path and obtain predictions through
+  `predict_fine_tuned`; inference stays in `eval()` mode with gradients
+  disabled.
+- Build one aligned error-analysis table with original row identity, text,
+  true label, predicted label, probabilities in class order `[0, 1]`, predicted
+  confidence, and character length. Reject mismatched lengths, reordered text,
+  invalid binary labels, or malformed probabilities before reporting results.
+- Define a false positive as `true=0, predicted=1` and a false negative as
+  `true=1, predicted=0`. Report total rows, total errors, error rate, FP/FN
+  counts, and correct-versus-error text-length summaries. Empty FP or FN groups
+  are valid and must not crash summary or export logic.
+- Display deterministic representative examples rather than random samples.
+  Confidence and text length may help organize inspection, but neither proves
+  why the model made an error. Human observations about negation, contrast,
+  ambiguity, truncation, or annotation noise must be labeled as qualitative
+  hypotheses, not causal explanations.
+- Save the ignored `error_analysis.txt` with run context, aggregate counts,
+  length summaries, deterministic FP/FN examples, and a clearly marked
+  qualitative-observations section. The report is descriptive; outer-holdout
+  observations must not feed back into model selection or training.
+
+### Demo inference and Gradio boundary
+
+- Reuse the saved fine-tuned tokenizer/model and the existing
+  `predict_fine_tuned` path. Load the artifact once when constructing the app,
+  not once per submitted text; do not train or download a replacement model at
+  request time.
+- Convert the one-item prediction into a stable result containing the binary
+  label and both finite probabilities as percentages. Reject empty or
+  whitespace-only text explicitly. A probability is model confidence within
+  the two-class task, not calibrated certainty or a neutral score.
+- `app.py` exposes a Gradio textbox and readable prediction output, launches
+  only under `if __name__ == "__main__":`, and defaults to local access with
+  sharing disabled. UI wiring is kept separate from model inference so the
+  latter can be covered by fast offline tests without opening a socket.
+
+### Notebook, documentation, and verification
+
+- Create `notebooks/day7_error_analysis_and_demo.ipynb` during the first Day 7
+  implementation item. After every later D7 item, immediately append or update
+  a small executable checkpoint that imports the newly implemented API,
+  demonstrates it on the smallest useful input, and explains what remains
+  unavailable. Do not postpone notebook integration to the final item.
+- Keep the notebook thin: it may prepare paths, call reusable functions,
+  display tables/text, and construct the Gradio interface, but reusable
+  analysis or inference logic must not live in notebook cells. Constructing an
+  interface in the notebook must not automatically launch a server.
+- Add a root `README.md` only after the implemented commands and artifacts are
+  known. Document setup, the binary label contract, notebook order, local
+  Gradio launch, generated ignored artifacts, recorded metrics without
+  placeholders, and the limits of predictions and error analysis.
+- Fast offline tests cover alignment validation, FP/FN semantics, empty error
+  groups, deterministic summaries/export, binary output formatting, empty UI
+  input, and injected fake inference. Real artifact loading, full outer-test
+  prediction, notebook execution, and Gradio launch are separate integration
+  checks; warn before the expensive or socket-opening checks and report them
+  as unverified when they are not run.
 
 ## Project invariants
 
