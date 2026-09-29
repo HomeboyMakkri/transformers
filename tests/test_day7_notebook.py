@@ -40,6 +40,9 @@ def test_day7_notebook_is_thin_and_exposes_d7_01_checkpoint() -> None:
     assert "summarize_day7_errors(" in combined_code
     assert "build_day7_length_summary_table(" in combined_code
     assert "save_day7_error_report(" in combined_code
+    assert "create_sentiment_demo_service(" in combined_code
+    assert "load_sentiment_demo_service(" in combined_code
+    assert "RUN_DAY7_D7_04_INTEGRATION = False" in combined_code
     assert "build_day7_prediction_preview(" in combined_code
     assert "SST2_LABEL_MAP" in combined_code
     assert "fine_tuned_model" in combined_code
@@ -62,3 +65,5 @@ def test_day7_notebook_explains_inference_and_leakage_boundaries() -> None:
     assert "causal explanation" in markdown.lower()
     assert "qualitative hypotheses" in markdown.lower()
     assert "error_analysis.txt" in markdown
+    assert "not calibrated certainty" in markdown
+    assert "neutral class" in markdown

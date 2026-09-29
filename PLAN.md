@@ -502,13 +502,15 @@ Work on one item per request. For each item, read its matching `tasks/dayN.md` s
 
 ### D7-04 — Demo prediction service
 
-- [ ] Add application-neutral demo logic that reuses the validated local
+- [x] **Status: implementation and offline verification complete; the optional
+  real one-text artifact check remains disabled in the notebook.**
+- [x] Add application-neutral demo logic that reuses the validated local
   fine-tuned setup and `predict_fine_tuned`, loads model/tokenizer once per app
   construction, and maps only `0/1` to `negative/positive`.
-- [ ] Format one submitted text as a stable binary label plus both class
+- [x] Format one submitted text as a stable binary label plus both class
   probabilities; reject empty or whitespace-only text and explain that softmax
   confidence is not calibrated certainty and does not provide a neutral class.
-- [ ] Immediately extend the notebook with an injected/offline one-text demo
+- [x] Immediately extend the notebook with an injected/offline one-text demo
   and, behind an explicit integration flag, a real local-artifact prediction.
 - **Done when:** UI-independent code turns one valid text into an ordered,
   human-readable binary result without training or per-request artifact loads.

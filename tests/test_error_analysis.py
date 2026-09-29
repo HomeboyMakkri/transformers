@@ -26,6 +26,14 @@ from transformers_learning.error_analysis import (
     save_day7_error_report,
     summarize_day7_errors,
 )
+
+
+def test_summarize_day7_errors_is_available_from_public_package() -> None:
+    """Keep the notebook import contract covered by an executed import."""
+
+    from transformers_learning import summarize_day7_errors as public_summary
+
+    assert public_summary is summarize_day7_errors
 from transformers_learning.splitting import split_outer_sentiment_indices
 
 
