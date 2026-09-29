@@ -539,11 +539,13 @@ Work on one item per request. For each item, read its matching `tasks/dayN.md` s
 
 ### D7-06 — Project README and reproducible usage
 
-- [ ] Add root `README.md` describing setup, seven-day structure, binary SST-2
+- [x] **Status: documentation and artifact/path checks complete; full clean-kernel
+  execution of all notebooks was not repeated.**
+- [x] Add root `README.md` describing setup, seven-day structure, binary SST-2
   semantics, notebook order, the Day 7 report, local Gradio launch, ignored
   artifacts, and interpretation limits. Use actual recorded metrics when
   available and never leave `X.XX` placeholders.
-- [ ] Immediately extend the Day 7 notebook with a final usage/checkpoint cell
+- [x] Immediately extend the Day 7 notebook with a final usage/checkpoint cell
   that links each implemented output to its documented command and clearly
   marks any unrun integration step.
 - **Done when:** a new learner can identify what is source code versus generated
