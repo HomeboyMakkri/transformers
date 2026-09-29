@@ -520,13 +520,15 @@ Work on one item per request. For each item, read its matching `tasks/dayN.md` s
 
 ### D7-05 — Thin Gradio application
 
-- [ ] Add repository-root `app.py` as a thin composition layer with a text
+- [x] **Status: implementation, offline verification, and local launch check
+  complete.**
+- [x] Add repository-root `app.py` as a thin composition layer with a text
   input, readable prediction output, title/description, and a main guard. Keep
   reusable inference code in `src/transformers_learning/` and default to local
   launch with Gradio sharing disabled.
-- [ ] Expose interface construction separately from launch so tests and the
+- [x] Expose interface construction separately from launch so tests and the
   notebook can inspect or call the interface without opening a socket.
-- [ ] Immediately extend the notebook to construct and display the interface
+- [x] Immediately extend the notebook to construct and display the interface
   object without auto-launching it; include the explicit terminal launch
   command and the expected local URL.
 - **Done when:** `python app.py` can serve the saved binary classifier locally,
